@@ -46,9 +46,14 @@ $lib = New-Item -ItemType Directory -Force (Join-Path $Prefix 'lib')
 $bin = New-Item -ItemType Directory -Force (Join-Path $Prefix 'bin')
 $lic = New-Item -ItemType Directory -Force (Join-Path $Prefix 'licenses')
 Copy-Item (Join-Path $src 'include\*.h') $inc
-Copy-Item (Join-Path $out 'SDL2.lib') $lib
-Copy-Item (Join-Path $out 'SDL2.dll') $bin
-if (Test-Path (Join-Path $out 'SDL2.pdb')) { Copy-Item (Join-Path $out 'SDL2.pdb') $bin }
+# SDL-UWP.vcxproj appends its own subfolder (SDL2-UWP\) to OutDir, so search for the outputs.
+function Find-Output([string]$name) {
+    $f = Get-ChildItem -Recurse -File (Join-Path $WorkDir "out\$Configuration") -Filter $name | Select-Object -First 1
+    if (-not $f) { throw "$name not found under $WorkDir\out\$Configuration" }
+    return $f.FullName
+}
+Copy-Item (Find-Output 'SDL2.lib') $lib
+Copy-Item (Find-Output 'SDL2.dll') $bin
 Copy-Item (Join-Path $src 'LICENSE.txt') (Join-Path $lic 'SDL2-LICENSE.txt')
 @{ name = 'SDL2'; version = $SdlVersion; sha256 = $SdlSha256; configuration = $Configuration } |
     ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $Prefix 'sdl2-build.json')
