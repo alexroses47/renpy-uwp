@@ -188,9 +188,19 @@ private:
             return Fallback("D3D device lost while switching to 4K120/1440p");
         }
         if (fps < kMinFps) {
-            char why[96];
-            snprintf(why, sizeof(why), "only %.1f fps after switching to 4K120/1440p", fps);
-            return Fallback(why);
+            // The TV resyncs after a mode change (one ~1 s gap seen in build 0.0.15): settle and measure again
+            // before deciding. Only a device loss falls back immediately.
+            RLOG("policy: %.1f fps is below %.0f (likely HDMI resync); measuring again", fps, kMinFps);
+            Settle(2.0);
+            fps = Measure(4.0, "policy output 3840x2160, second measurement");
+            if (m_renderer.DeviceLosses() != losses || m_renderer.DeviceRemovedReason() != 0) {
+                return Fallback("D3D device lost while measuring 4K120/1440p");
+            }
+            if (fps < kMinFps) {
+                char why[96];
+                snprintf(why, sizeof(why), "only %.1f fps in two measurements at 4K120/1440p", fps);
+                return Fallback(why);
+            }
         }
         m_policyActive = true;
         m_inFallback = false;
