@@ -345,3 +345,49 @@ al suspender por si acaso).
   Pendiente: observación del usuario en la TV y prueba lanzando desde Dev Home (no por Device Portal).
 - Despliegue: actualizar con la versión anterior en ejecución deja la instalación "en curso" (HTTP 409 "Another deployment
   is running") hasta que la app se cierra → `ci/deploy.sh` ahora detiene la app antes de instalar.
+
+## 15. USB y HDMI: conclusiones con el USB real (builds 0.0.11–0.0.14, 2026-11-08)
+
+### USB (resuelto)
+- El USB (NTFS, etiqueta `RENPY`, ACL de sternserv) aparece como **`E:\` tipo removable**, 29 GB.
+- **Todo funciona igual con APIs Win32 normales y con `*FromAppW`**: listado (`FindFirstFileExW`), atributos, lectura con
+  `CreateFile2`, con `CreateFile2FromAppW` y con el CRT (`_wfopen_s`). UTF-8 intacto (`áéíóú ñ`). `KnownFolders.RemovableDevices`
+  también ve `E:\` y lee el `.txt` (solo los tipos declarados en `FileTypeAssociation`).
+  → **Para CPython no hace falta parchear las rutas de archivos con `*FromApp`**; basta con que use `CreateFile2` (no existe
+  `CreateFileW` en la partición de apps) y las APIs de búsqueda normales.
+- KS:RE en `E:\renpy\games\ksre\game\`: 26 archivos, 4 carpetas, **1392 MB**, 6 `.rpa` (1.36 GB), 8 `.py`, 2 `.png`.
+- Velocidad: el primer test (con caché) dio 3995 MB/s, que no es real. Sin caché (`FILE_FLAG_NO_BUFFERING`, 64 MB desde el
+  offset 256 MB de `images.rpa`): **25.0 MB/s**. Es lento: suficiente para leer recursos bajo demanda, pero cargar 1.4 GB
+  completo tardaría ~1 min. Probar otro puerto (USB 3) o un pendrive más rápido antes del Hito 5.
+
+### HDMI / fps (limitaciones medidas)
+Matriz modo de salida × tamaño de swapchain, `Present(1)` salvo indicación, 4 s por prueba tras 2 s de estabilización:
+
+| Salida HDMI | Swapchain | Resultado |
+|---|---|---|
+| 3840×2160 @ 59.94 | 3840×2160 | **GPU reiniciada** (`DXGI_ERROR_DEVICE_RESET` 0x887A0007) — 2 de 2 veces |
+| 3840×2160 @ 119.88 | 3840×2160 | **GPU reiniciada** — 2 de 2 |
+| 3840×2160 @ 59.94 | 3200×1800 / 2880×1620 | **GPU reiniciada** |
+| 3840×2160 @ 59.94 | 2560×1440 | 60.0 fps (build 0.0.13); GPU reiniciada en 0.0.14 (primer cambio desde 1080p60) |
+| 3840×2160 @ 119.88 | 2560×1440 | **59.8–60.0 fps** (estable, 3 de 3) |
+| 3840×2160 @ 119.88 | 1920×1080 | 60.0 fps |
+| 3840×2160 @ 119.88 | 2560×1440, `Present(0)` | GPU reiniciada |
+| 1920×1080 @ 119.88 | 1920×1080 | 60.0 fps; con `Present(0)` 59.8 fps |
+| 1920×1080 @ 59.94 (por defecto) | 1920×1080 | ~45 fps en el arranque (con la prueba de USB en paralelo y pausas iniciales de ~500 ms) |
+
+Conclusiones:
+1. **La salida 3840×2160 a 119.88 Hz sí se consigue** desde UWP (`HdmiDisplayInformation` + `HdrOption::None`). No limitan
+   la consola, el cable ni la TV: el modo aparece en la lista y la TV lo recibe.
+2. **La app no pasa de 60 fps en ningún modo de 120 Hz**, ni a 1080p ni sin vsync (`Present(0)` también da 59.8). Así que el
+   límite no es el vsync del swapchain sino **la composición de la CoreWindow UWP, que va a 60 Hz** (límite de plataforma/API para
+   apps UWP en Dev Mode). No hay ajuste conocido que lo cambie; no confirmado en documentación (pendiente buscar si GDK/`expandedResources`
+   o un `CoreWindow`/`SwapChainPanel` distinto lo permiten).
+3. **Swapchains mayores de 2560×1440 reinician la GPU** (DEVICE_RESET) en Series S, a 60 y a 120 Hz. Coincide con la recomendación
+   de Walbourn (1440p en Series S). Causa exacta no confirmada: candidatas, el presupuesto de memoria de vídeo (el adaptador anuncia
+   **128 MB dedicados**; 2 búferes 4K BGRA = 66 MB) o un límite del plano de presentación. Siguiente diagnóstico:
+   `IDXGIAdapter3::QueryVideoMemoryInfo` y liberar el swapchain **antes** del cambio de modo.
+4. **Mejor modo alcanzable hoy: salida 3840×2160 @ 119.88 Hz con swapchain 2560×1440 a 60 fps** (la consola escala a 4K).
+   Alternativa equivalente en fps: salida 4K60 con 1440p (aunque una vez reinició la GPU al cambiar desde 1080p).
+5. La pantalla negra que vio el usuario era la GPU reiniciada por el swapchain 4K: el host 0.0.11 no se recuperaba de
+   la pérdida del dispositivo y se quedaba bloqueado en `Present` (por eso View no respondía). Desde la 0.0.13 el host
+   detecta `GetDeviceRemovedReason` y crea un dispositivo nuevo.

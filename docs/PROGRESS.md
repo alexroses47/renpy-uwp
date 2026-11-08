@@ -54,3 +54,17 @@
 **Siguiente paso**
 - Usuario: preparar el USB, abrir la app desde Dev Home y describir lo que ve en la TV (color, cambios con A/B, pantalla
   en negro tras el cambio a 4K120, efecto de View/Menu). Analizar el log con `ci/fetch-logs.sh`.
+
+### 2026-11-08 — Hito 1, sesión 2 (continuación)
+- USB preparado por el usuario (NTFS `RENPY`, ACL sternserv) con `\renpy-uwp-test.txt` y `\renpy\games\ksre\game\`.
+  Layout registrado en `CLAUDE.md`. Prueba Y ampliada: lista y cuenta los juegos y mide la lectura sin caché.
+- Observación del usuario: los botones cambian el color, pero en un momento la pantalla queda negra para siempre y View no responde.
+  Causa encontrada: el swapchain de 3840x2160 reinicia la GPU (DEVICE_RESET) y el host no se recuperaba.
+- Builds 0.0.12–0.0.14: swapchain con objeto de espera, recuperación de pérdida de dispositivo, matriz modo × swapchain.
+  Resultados y conclusiones en RESEARCH §15: USB OK con APIs normales (25 MB/s sin caché); salida 4K120 OK; la app no supera 60 fps;
+  swapchains > 1440p reinician la GPU.
+
+**Siguiente paso (para cerrar el Hito 1)**
+- Host estable por defecto: arrancar en salida 4K120 + swapchain 1440p (o en el modo que el usuario elija), liberar el swapchain
+  antes del cambio de modo, registrar `QueryVideoMemoryInfo`, y dejar la matriz como diagnóstico opcional (botón) y no en el arranque.
+- Prueba final del usuario (color, A/B, sin pantallas negras) y confirmación para cerrar el Hito 1.
