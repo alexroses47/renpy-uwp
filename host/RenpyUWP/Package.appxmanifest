@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Publisher MUST equal the CN of the signing certificate (UWP_CERT_PFX_BASE64 secret).
+  Version is overwritten by CI (0.0.<run_number>.0).
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity
+    Name="RenpyUWP"
+    Publisher="CN=RenpyUWP"
+    Version="0.0.1.0"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Ren'Py UWP</DisplayName>
+    <PublisherDisplayName>renpy-uwp</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.19041.0" MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="App" Executable="$targetnametoken$.exe" EntryPoint="RenpyUWP.App">
+      <uap:VisualElements
+        DisplayName="Ren'Py UWP"
+        Description="Ren'Py 8 runtime for UWP / Xbox Developer Mode"
+        BackgroundColor="#202020"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+        <uap:SplashScreen Image="Assets\SplashScreen.png" BackgroundColor="#202020" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <Capability Name="internetClient" />
+    <Capability Name="privateNetworkClientServer" />
+    <uap:Capability Name="removableStorage" />
+    <!-- Win32 file APIs on the USB drive (E:\) in Developer Mode, same as RetroArch / 2ship UWP. -->
+    <rescap:Capability Name="broadFileSystemAccess" />
+    <!-- On Xbox Dev Mode: run with Game resources instead of App resources. -->
+    <rescap:Capability Name="expandedResources" />
+  </Capabilities>
+</Package>
