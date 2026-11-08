@@ -81,10 +81,12 @@ std::optional<HdmiDisplayMode> Find(uint32_t w, uint32_t h, double minHz, double
     return best;
 }
 
-bool Request(HdmiDisplayMode const& mode, const std::function<void()>& pump) {
-    RLOG("HDMI: requesting %s", Describe(mode).c_str());
+// variant 0: (mode, HdrOption::None) as Kodi does for SDR; variant 1: (mode) overload.
+bool RequestVariant(HdmiDisplayMode const& mode, int variant, const std::function<void()>& pump) {
+    RLOG("HDMI: requesting %s [%s]", Describe(mode).c_str(), variant == 0 ? "hdrOption=None" : "no hdrOption");
     try {
-        auto op = g_hdmi.RequestSetCurrentDisplayModeAsync(mode, HdmiDisplayHdrOption::EotfSdr);
+        auto op = variant == 0 ? g_hdmi.RequestSetCurrentDisplayModeAsync(mode, HdmiDisplayHdrOption::None)
+                               : g_hdmi.RequestSetCurrentDisplayModeAsync(mode);
         ULONGLONG deadline = GetTickCount64() + 15000;
         while (op.Status() == AsyncStatus::Started && GetTickCount64() < deadline) {
             pump();
@@ -107,6 +109,10 @@ bool Request(HdmiDisplayMode const& mode, const std::function<void()>& pump) {
         RLOG("HDMI: request threw 0x%08lx: %ls", static_cast<unsigned long>(e.code()), e.message().c_str());
     }
     return false;
+}
+
+bool Request(HdmiDisplayMode const& mode, const std::function<void()>& pump) {
+    return RequestVariant(mode, 0, pump) || RequestVariant(mode, 1, pump);
 }
 
 }  // namespace
@@ -188,7 +194,7 @@ Mode RequestBest(const std::function<void()>& pump) {
 void Reapply() {
     if (!g_hdmi || !g_chosen) return;
     try {
-        g_hdmi.RequestSetCurrentDisplayModeAsync(g_chosen, HdmiDisplayHdrOption::EotfSdr);
+        g_hdmi.RequestSetCurrentDisplayModeAsync(g_chosen, HdmiDisplayHdrOption::None);
         RLOG("HDMI: re-requested %s", Describe(g_chosen).c_str());
     } catch (hresult_error const& e) {
         RLOG("HDMI: reapply threw 0x%08lx", static_cast<unsigned long>(e.code()));

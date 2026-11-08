@@ -15,6 +15,7 @@
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.System.Profile.h>
 #include <winrt/Windows.System.h>
+#include <winrt/Windows.UI.Core.h>
 
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
@@ -100,6 +101,20 @@ public:
             return 1;
         }
         auto* coreWindow = reinterpret_cast<IUnknown*>(info.info.winrt.window);
+        try {
+            winrt::Windows::UI::Core::CoreWindow cw{nullptr};
+            winrt::copy_from_abi(cw, info.info.winrt.window);
+            RLOG("CoreWindow: visible=%d, active flags SDL=0x%08x", cw.Visible() ? 1 : 0,
+                 static_cast<unsigned>(SDL_GetWindowFlags(m_window)));
+            cw.VisibilityChanged([](auto&&, winrt::Windows::UI::Core::VisibilityChangedEventArgs const& a) {
+                RLOG("CoreWindow: VisibilityChanged visible=%d", a.Visible() ? 1 : 0);
+            });
+            cw.Activated([](auto&&, winrt::Windows::UI::Core::WindowActivatedEventArgs const& a) {
+                RLOG("CoreWindow: Activated state=%d", static_cast<int>(a.WindowActivationState()));
+            });
+        } catch (...) {
+            RLOG("CoreWindow: cannot query visibility");
+        }
 
         // USB / storage probe runs in the background; press Y to run it again.
         renpyuwp::storage::RunAsync();
@@ -128,12 +143,14 @@ public:
         RLOG("entering main loop (A/B: color, X: fps report, Y: rerun storage probe)");
         m_meter.Start();
         m_lastPeriodicReport = GetTickCount64();
+        ResetTimers();
         while (m_running) {
-            PumpEvents();
+            TimedPump();
             if (!Frame()) break;
             if (GetTickCount64() - m_lastPeriodicReport > 30000) {
                 ReportFps("periodic (last 30 s)");
                 m_meter.Start();
+                ResetTimers();
                 m_lastPeriodicReport = GetTickCount64();
             }
         }
@@ -160,9 +177,28 @@ private:
     }
 
     bool Frame() {
-        if (!m_renderer.Frame(kColors[m_color])) return false;
+        LARGE_INTEGER t0, t1;
+        QueryPerformanceCounter(&t0);
+        bool ok = m_renderer.Frame(kColors[m_color]);
+        QueryPerformanceCounter(&t1);
+        m_presentTicks += t1.QuadPart - t0.QuadPart;
+        if (!ok) return false;
         m_meter.Tick();
         return true;
+    }
+
+    // Times event pumping separately from Present, to tell vsync waits from SDL blocking.
+    void TimedPump() {
+        LARGE_INTEGER t0, t1;
+        QueryPerformanceCounter(&t0);
+        PumpEvents();
+        QueryPerformanceCounter(&t1);
+        m_pumpTicks += t1.QuadPart - t0.QuadPart;
+    }
+
+    void ResetTimers() {
+        m_pumpTicks = 0;
+        m_presentTicks = 0;
     }
 
     void Measure(double seconds, const char* label) {
@@ -170,8 +206,9 @@ private:
         uint32_t pc0 = 0, prc0 = 0, src0 = 0, pc1 = 0, prc1 = 0, src1 = 0;
         bool stats0 = m_renderer.FrameStatistics(pc0, prc0, src0);
         m_meter.Start();
+        ResetTimers();
         while (m_running && m_meter.Seconds() < seconds) {
-            PumpEvents();
+            TimedPump();
             if (!Frame()) break;
         }
         ReportFps(label);
@@ -188,6 +225,12 @@ private:
         RLOG("fps: RESULT %s: %.2f fps over %.2f s (%llu frames), frame time min %.2f ms max %.2f ms, hitches %llu",
              label, m_meter.Fps(), m_meter.Seconds(), static_cast<unsigned long long>(m_meter.Frames()),
              m_meter.MinMs(), m_meter.MaxMs(), static_cast<unsigned long long>(m_meter.Hitches()));
+        LARGE_INTEGER f;
+        QueryPerformanceFrequency(&f);
+        double frames = m_meter.Frames() ? static_cast<double>(m_meter.Frames()) : 1.0;
+        RLOG("fps:   avg per frame: event pump %.2f ms, Present %.2f ms",
+             1000.0 * static_cast<double>(m_pumpTicks) / static_cast<double>(f.QuadPart) / frames,
+             1000.0 * static_cast<double>(m_presentTicks) / static_cast<double>(f.QuadPart) / frames);
     }
 
     void PumpEvents() {
@@ -225,8 +268,18 @@ private:
                 RLOG("input: key down %s (scancode %d)", SDL_GetKeyName(e.key.keysym.sym), e.key.keysym.scancode);
                 break;
             case SDL_WINDOWEVENT:
-                if (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
-                    RLOG("event: window size changed to %dx%d", e.window.data1, e.window.data2);
+                switch (e.window.event) {
+                    case SDL_WINDOWEVENT_SIZE_CHANGED:
+                        RLOG("event: window size changed to %dx%d", e.window.data1, e.window.data2);
+                        break;
+                    case SDL_WINDOWEVENT_SHOWN: RLOG("event: window shown"); break;
+                    case SDL_WINDOWEVENT_HIDDEN: RLOG("event: window hidden"); break;
+                    case SDL_WINDOWEVENT_EXPOSED: RLOG("event: window exposed"); break;
+                    case SDL_WINDOWEVENT_MINIMIZED: RLOG("event: window minimized"); break;
+                    case SDL_WINDOWEVENT_RESTORED: RLOG("event: window restored"); break;
+                    case SDL_WINDOWEVENT_FOCUS_GAINED: RLOG("event: focus gained"); break;
+                    case SDL_WINDOWEVENT_FOCUS_LOST: RLOG("event: focus lost"); break;
+                    default: break;
                 }
                 break;
             default:
@@ -263,6 +316,8 @@ private:
     renpyuwp::Renderer m_renderer;
     renpyuwp::FpsMeter m_meter;
     ULONGLONG m_lastPeriodicReport = 0;
+    LONGLONG m_pumpTicks = 0;
+    LONGLONG m_presentTicks = 0;
     int m_color = 0;
     bool m_running = true;
 };
