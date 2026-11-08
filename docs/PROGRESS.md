@@ -27,8 +27,10 @@
   duplicadas durante la actualización; lanzamiento inmediato tras reinstalar falla (se reintenta); log bloqueado
   para el portal (HTTP 423, ahora se abre en modo compartido); swapchain de 8×8 (ahora tamaño explícito).
 
-**Pendiente**
-- Confirmación visual del usuario en la TV (pantalla verde azulado) para cerrar el Hito 0.
+- **Hito 0 cerrado (2026-11-08):** el usuario confirmó en la TV el splash y luego la pantalla verde azulado fija.
+  Tag git `hito-0`.
 
 **Siguiente paso**
-- Tras la confirmación del usuario: Hito 1 (SDL2 2.0.20 WinRT + mando). No empezar sin su visto bueno.
+- Hito 1: SDL2 2.0.20 WinRT + mando (A/B cambian el color), más dos pruebas pedidas por el usuario:
+  acceso al USB desde C++ (unidades, listado de la raíz y lectura de `renpy-uwp-test.txt`) y salida HDMI
+  (modos disponibles, cambio a 3840x2160 a 120 Hz, swapchain a la resolución real, fps medidos).
