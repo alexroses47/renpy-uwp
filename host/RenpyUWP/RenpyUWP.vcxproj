@@ -83,7 +83,9 @@
       <GenerateWindowsMetadata>false</GenerateWindowsMetadata>
       <AdditionalLibraryDirectories>$(PythonDir)\lib;$(SdlDir)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <!-- Strict mode: only WindowsApp.lib for system APIs (anything else must be justified in RESEARCH.md). -->
-      <AdditionalDependencies>python312.lib;zlibstatic.lib;expat_uwp.lib;mpdec_uwp.lib;SDL2.lib;WindowsApp.lib</AdditionalDependencies>
+      <!-- ws2_32.lib after WindowsApp.lib: only for the data symbol in6addr_any (overlapped.c); functions still
+           resolve through WindowsApp.lib. Kodi links ws2_32 for the same build (docs/RESEARCH.md section 22). -->
+      <AdditionalDependencies>python312.lib;zlibstatic.lib;expat_uwp.lib;mpdec_uwp.lib;SDL2.lib;WindowsApp.lib;ws2_32.lib</AdditionalDependencies>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
     </Link>
   </ItemDefinitionGroup>

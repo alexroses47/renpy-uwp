@@ -535,3 +535,15 @@ No hay backport a 3.12 (rama solo de seguridad). Los cambios se aplican a mano.
    _sqlite3 _ctypes`) fuera en el Hito 2; `pyexpat`, `_elementtree` y `_decimal` usan el código vendorizado de CPython y pueden entrar.
 5. Alternativa a valorar más adelante: rebasar la misma serie sobre **3.12.16** (última 3.12, más correcciones de seguridad).
    No ahora: añade conflictos y aleja la base de la que Kodi probó en Series S.
+
+## 22. Build del Hito 2: auditoría de enlace
+
+- CPython 3.12.11 (fork + 5 parches) compila **entero con `/we4013`** (ninguna función sin declarar en la partición APP), incluidos
+  los módulos integrados nuevos (`_asyncio _queue select unicodedata _socket _overlapped _multiprocessing _zoneinfo pyexpat
+  _elementtree _decimal`).
+- Enlace del host en modo estricto (`python312.lib zlibstatic expat_uwp mpdec_uwp SDL2 WindowsApp.lib`): **un solo símbolo sin
+  resolver, `in6addr_any`** (dato `const`, no función) usado por `Modules/overlapped.c`. Vive en `ws2_32.lib` y no en el umbrella.
+  → Aceptado: `ws2_32.lib` se enlaza **después** de `WindowsApp.lib` (las funciones de Winsock siguen saliendo del umbrella).
+  Kodi enlaza `ws2_32.lib` en el mismo build y está probado en Xbox.
+- Problemas de build resueltos: macros `PREFIX/VERSION/VPATH` del núcleo rompen expat (bibliotecas separadas); `expat_config.h`
+  necesita `pyconfig.h`; `/sdl` por defecto en proyectos UWP convierte C4703 en error (`/sdl-` como el núcleo).
