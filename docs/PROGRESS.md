@@ -79,5 +79,14 @@
   un presupuesto de 3801 MB (la memoria no explica los reinicios con swapchains > 1440p).
 - 0.0.15 retrocedió a 1080p60 por una pausa única de ~1 s tras el cambio de modo; corregido en 0.0.16 (repite la medida).
 
-**Pendiente para cerrar el Hito 1**
-- Prueba del usuario en la TV: color, A/B, suspensión/vuelta (Home), View/Menu, salida, sin pantallas negras permanentes.
+- Prueba del usuario (0.0.16): negro breve al cambiar de modo, luego colores; A/B responden al instante. Al salir la consola
+  vuelve a 1080p60, que es su modo del sistema (todas las ejecuciones arrancan en 1920x1080 @ 59.94): el log muestra
+  `lifecycle: suspending -> restoring the system display mode`. Política activa a 59.94 fps sin pausas.
+- **Hito 1 cerrado (2026-11-08)** con la confirmación del usuario. Tag git `hito-1`.
+- No verificado en esta prueba (el usuario salió directamente): volver a la app tras Home (reaplicación de 4K120) y View/Menu
+  en la 0.0.16. Se comprobará al usar el host en el Hito 2.
+
+**Siguiente paso**
+- Hito 2 (decisivo): CPython 3.12.8 para UWP x64 embebido en el host. Investigar primero (RESEARCH): PCbuild con
+  `WINAPI_FAMILY_APP`, parches de ms-iot/Greentwip, `CreateFileW` → `CreateFile2` (ya visto en el Hito 1), stdlib empaquetada.
+  No empezar sin la confirmación del usuario.
