@@ -68,9 +68,11 @@ App UWP (host C++/WinRT, CoreApplication)
      └─ Partidas y persistentes: LocalState (config.savedir)
 ```
 
-Requisito de salida de vídeo: **el objetivo final es 3840x2160 (4K) a 120 Hz** en la Samsung S90D (HDMI 2.1).
-El host debe pedir ese modo con `HdmiDisplayInformation` y crear el swapchain a la resolución real. Si la consola,
-la API o la configuración lo impiden, documentar qué lo limita exactamente y usar el mejor modo alcanzable.
+Requisito de salida de vídeo (revisado 2026-11-08 tras medirlo en el Hito 1, ver `docs/RESEARCH.md` §15):
+**salida HDMI 3840x2160 a 119.88 Hz con swapchain de 2560x1440 escalado por la consola a 4K, a 60 fps.**
+Límites medidos en la Series S: una app UWP no supera 60 fps en ningún modo de 120 Hz (ni sin vsync), y los
+swapchains mayores de 1440p reinician la GPU (`DXGI_ERROR_DEVICE_RESET`). Si la GPU se pierde al cambiar de modo,
+el host retrocede a 1920x1080 a 60 Hz y lo registra. Al suspender o salir se restaura el modo del sistema.
 
 Restricciones UWP que hay que asumir y verificar:
 - Sandbox AppContainer: acceso a disco limitado al paquete (solo lectura), LocalState/LocalCache/TempState
@@ -140,10 +142,13 @@ Restricciones UWP que hay que asumir y verificar:
 
 ### Hito 5 — KS:RE jugable
 - Cargar KS:RE desde el USB; partidas en LocalState; videos (FFmpeg); fuentes; mando; tipo Game.
-- Resolución real: objetivo **3840x2160 a 120 Hz** (swapchain al tamaño HDMI, modo pedido con `HdmiDisplayInformation`);
-  si no es alcanzable, el mejor modo posible con la limitación documentada. Medir memoria con el Device Portal (Performance).
-- **Aceptación:** se puede jugar el Acto 1 completo, guardar, salir, volver y cargar, con la salida en 3840x2160 a 120 Hz
-  (o en el mejor modo alcanzable documentado en `docs/RESEARCH.md`) y los fps reales registrados en el log.
+- Resolución: **1440p (swapchain 2560x1440) escalado a 4K a 60 fps**, con salida HDMI 3840x2160 a 119.88 Hz pedida con
+  `HdmiDisplayInformation` (límite de UWP documentado en `docs/RESEARCH.md` §15; ya no se persigue 4K nativo a 120 fps).
+  Medir memoria con el Device Portal (Performance).
+- Rendimiento de disco: el USB mide ~25 MB/s sin caché. Probar también **copiar el juego a LocalState** (disco interno)
+  y comparar tiempos de carga con el USB; usar el que sea mejor y documentarlo.
+- **Aceptación:** se puede jugar el Acto 1 completo, guardar, salir, volver y cargar, con la salida en 1440p escalado a
+  4K a 60 fps (o el retroceso a 1080p60 si se registra pérdida de GPU) y los fps reales registrados en el log.
 
 ## Flujo de trabajo en cada sesión
 
