@@ -6,6 +6,8 @@
 
 #include <windows.h>
 
+#include <share.h>
+
 #include <cstdarg>
 #include <cstdio>
 #include <mutex>
@@ -34,8 +36,10 @@ void Init() {
         return;
     }
     path += L"\\renpy-uwp.log";
-    if (_wfopen_s(&g_file, path.c_str(), L"wb") != 0) {
-        g_file = nullptr;
+    // _wfopen_s opens files without sharing; the Device Portal must be able to read the log
+    // while the app is running, so allow shared reads.
+    g_file = _wfsopen(path.c_str(), L"wb", _SH_DENYWR);
+    if (!g_file) {
         OutputDebugStringW(L"renpy-uwp: cannot open log file\n");
     }
 }
