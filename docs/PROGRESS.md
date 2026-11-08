@@ -68,3 +68,16 @@
 - Host estable por defecto: arrancar en salida 4K120 + swapchain 1440p (o en el modo que el usuario elija), liberar el swapchain
   antes del cambio de modo, registrar `QueryVideoMemoryInfo`, y dejar la matriz como diagnóstico opcional (botón) y no en el arranque.
 - Prueba final del usuario (color, A/B, sin pantallas negras) y confirmación para cerrar el Hito 1.
+
+### 2026-11-08 — Hito 1, build estable 0.0.16
+- Decisión del usuario: por defecto salida 3840x2160 @ 119.88 Hz con swapchain 2560x1440. `CLAUDE.md` actualizado: el
+  objetivo del Hito 5 pasa a ser 1440p escalado a 4K a 60 fps (límite de UWP), y queda anotado probar el juego en LocalState vs USB.
+- Host: política por defecto con retroceso automático a 1080p60 si se pierde la GPU (o si los fps siguen bajos tras volver a
+  medir), watchdog en el bucle principal, restauración del modo del sistema al suspender/salir (`CoreApplication::Suspending/
+  Exiting`) y reaplicación al volver, `QueryVideoMemoryInfo` en el log, matriz de diagnóstico movida al botón RB.
+- Medido en consola (0.0.16): política ACTIVA, **59.94 fps sostenidos 30 s, frame time 16.4–17.1 ms, 0 pausas**; VRAM 32 MB de
+  un presupuesto de 3801 MB (la memoria no explica los reinicios con swapchains > 1440p).
+- 0.0.15 retrocedió a 1080p60 por una pausa única de ~1 s tras el cambio de modo; corregido en 0.0.16 (repite la medida).
+
+**Pendiente para cerrar el Hito 1**
+- Prueba del usuario en la TV: color, A/B, suspensión/vuelta (Home), View/Menu, salida, sin pantallas negras permanentes.
