@@ -8,9 +8,11 @@
 
 #include <windows.h>
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 
+#include <winrt/Windows.ApplicationModel.Core.h>
 #include <winrt/Windows.ApplicationModel.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.System.Profile.h>
@@ -128,26 +130,32 @@ public:
             return 1;
         }
         m_haveHdmi = haveHdmi;
-        Measure(4.0, "baseline (initial output mode)");
+        InstallLifecycleHandlers();
+        Measure(3.0, "baseline (initial output mode)");
 
-        if (haveHdmi && !TryBestMode()) return 1;
+        if (haveHdmi && !ApplyPolicy()) return 1;
 
-        RLOG("entering main loop (A/B: color, X: fps report, Y: storage probe, View: default HDMI mode, Menu: retry 4K120)");
+        RLOG("entering main loop (A/B: color, X: fps+vram report, Y: storage probe, View: system HDMI mode, "
+             "Menu: re-apply 4K120/1440p, RB: diagnostic mode matrix)");
         m_meter.Start();
         m_lastPeriodicReport = GetTickCount64();
         ResetTimers();
+        m_lastPresent = GetTickCount64();
         while (m_running) {
             TimedPump();
             if (!RunPendingAction()) break;
-            if (Frame() == renpyuwp::Renderer::FrameResult::Error) break;
+            auto r = Frame();
+            if (r == renpyuwp::Renderer::FrameResult::Presented) m_lastPresent = GetTickCount64();
+            if (!Watchdog(r)) break;
             if (GetTickCount64() - m_lastPeriodicReport > 30000) {
                 ReportFps("periodic (last 30 s)");
+                m_renderer.LogVideoMemory("periodic");
                 m_meter.Start();
                 ResetTimers();
                 m_lastPeriodicReport = GetTickCount64();
             }
         }
-        RLOG("main loop finished");
+        RLOG("main loop finished; restoring the system display mode");
         renpyuwp::display::RestoreDefault();
         SDL_DestroyWindow(m_window);
         SDL_Quit();
@@ -155,6 +163,108 @@ public:
     }
 
 private:
+    // ---- Default output policy (user decision 2026-11-08): HDMI 3840x2160 @ 119.88 Hz with a
+    // 2560x1440 swapchain (60 fps: UWP composition limit). Falls back to 1920x1080 @ 60 Hz on any
+    // device loss or stall, and logs why.
+    static constexpr int kPolicyCandidate = 0;    // 3840x2160 @ 120 Hz
+    static constexpr int kFallbackCandidate = 4;  // 1920x1080 @ 60 Hz
+    static constexpr uint32_t kPolicyW = 2560, kPolicyH = 1440;
+    static constexpr double kMinFps = 50.0;
+
+    bool ApplyPolicy() {
+        RLOG("policy: applying HDMI %s with swapchain %ux%u", renpyuwp::display::CandidateLabel(kPolicyCandidate),
+             kPolicyW, kPolicyH);
+        uint32_t losses = m_renderer.DeviceLosses();
+        m_renderer.LogVideoMemory("before mode change");
+        m_renderer.ReleaseSwapchain();  // no swapchain alive while the output mode changes
+        renpyuwp::display::Mode active;
+        if (!renpyuwp::display::RequestCandidate(kPolicyCandidate, [this] { PumpEvents(); }, active)) {
+            return Fallback("4K120 mode could not be set");
+        }
+        renpyuwp::display::Mode sc{kPolicyW, kPolicyH, active.refreshHz};
+        double fps = 0;
+        if (!RebuildAndMeasure(sc, "policy output 3840x2160", &fps)) return false;
+        if (m_renderer.DeviceLosses() != losses || m_renderer.DeviceRemovedReason() != 0) {
+            return Fallback("D3D device lost while switching to 4K120/1440p");
+        }
+        if (fps < kMinFps) {
+            char why[96];
+            snprintf(why, sizeof(why), "only %.1f fps after switching to 4K120/1440p", fps);
+            return Fallback(why);
+        }
+        m_policyActive = true;
+        m_inFallback = false;
+        RLOG("policy: ACTIVE, output %ux%u @ %.3f Hz, swapchain %ux%u, %.1f fps", active.width, active.height,
+             active.refreshHz, m_renderer.Width(), m_renderer.Height(), fps);
+        return true;
+    }
+
+    bool Fallback(const char* reason) {
+        RLOG("policy: FALLBACK to 1920x1080 @ 60 Hz: %s", reason);
+        m_policyActive = false;
+        m_inFallback = true;
+        m_renderer.ReleaseSwapchain();
+        renpyuwp::display::Mode active;
+        if (!renpyuwp::display::RequestCandidate(kFallbackCandidate, [this] { PumpEvents(); }, active)) {
+            RLOG("policy: 1080p60 not settable; restoring the system default mode instead");
+            renpyuwp::display::RestoreDefault();
+            Wait(3.0);
+            active = renpyuwp::display::Current();
+        }
+        renpyuwp::display::Mode sc{1920, 1080, active.refreshHz};
+        double fps = 0;
+        if (!RebuildAndMeasure(sc, "fallback output", &fps)) return false;
+        RLOG("policy: fallback active, output %ux%u @ %.3f Hz, %.1f fps", active.width, active.height,
+             active.refreshHz, fps);
+        return true;
+    }
+
+    // Main-loop watchdog: device loss or 3 s without a presented frame -> fallback.
+    bool Watchdog(renpyuwp::Renderer::FrameResult r) {
+        bool lost = m_renderer.DeviceRemovedReason() != 0;
+        bool stalled = GetTickCount64() - m_lastPresent > 3000;
+        if (!lost && !stalled && r != renpyuwp::Renderer::FrameResult::Error) return true;
+        RLOG("watchdog: %s (Present result %d, device removed reason 0x%08lx)",
+             lost ? "D3D device lost" : (stalled ? "no frame presented for 3 s" : "Present error"), static_cast<int>(r),
+             static_cast<unsigned long>(m_renderer.DeviceRemovedReason()));
+        if (m_inFallback && !lost) {
+            // Already at 1080p60: just rebuild the swapchain once more.
+            bool ok = m_renderer.Recreate(1920, 1080);
+            m_lastPresent = GetTickCount64();
+            return ok;
+        }
+        bool ok = Fallback("watchdog in main loop");
+        m_lastPresent = GetTickCount64();
+        return ok;
+    }
+
+    void Wait(double seconds) {
+        ULONGLONG until = GetTickCount64() + static_cast<ULONGLONG>(seconds * 1000);
+        while (GetTickCount64() < until) {
+            PumpEvents();
+            Sleep(10);
+        }
+    }
+
+    // Restore the system display mode whenever the app leaves the foreground, re-apply on resume.
+    // Registered directly on CoreApplication (UI thread) so it runs even if the main loop is busy.
+    void InstallLifecycleHandlers() {
+        using winrt::Windows::ApplicationModel::Core::CoreApplication;
+        CoreApplication::Suspending([this](auto&&, auto&&) {
+            RLOG("lifecycle: suspending -> restoring the system display mode");
+            renpyuwp::display::RestoreDefault();
+            m_suspendedWithPolicy = m_policyActive || m_inFallback;
+        });
+        CoreApplication::Resuming([this](auto&&, auto&&) {
+            RLOG("lifecycle: resuming -> will re-apply the output policy");
+            if (m_suspendedWithPolicy) m_resumePending = true;
+        });
+        CoreApplication::Exiting([](auto&&, auto&&) {
+            RLOG("lifecycle: exiting -> restoring the system display mode");
+            renpyuwp::display::RestoreDefault();
+        });
+    }
+
     // Test matrix: HDMI mode x swapchain size. Separates "the output mode does not run" from
     // "this swapchain size cannot be scanned out at this rate". Riskiest trial (4K swapchain at
     // 120 Hz, which removed the D3D device in build 0.0.12) goes last. The best working
@@ -231,11 +341,7 @@ private:
 
     bool RestoreDefaultAndMeasure() {
         renpyuwp::display::RestoreDefault();
-        ULONGLONG until = GetTickCount64() + 3000;
-        while (GetTickCount64() < until) {
-            PumpEvents();
-            Sleep(10);
-        }
+        Wait(3.0);
         m_activeMode = renpyuwp::display::Current();
         return RebuildAndMeasure(m_activeMode, "default output", nullptr);
     }
@@ -260,15 +366,26 @@ private:
 
     // Button actions that need their own wait/measure loops run here, outside event handling.
     bool RunPendingAction() {
-        int action = m_pendingAction;
-        m_pendingAction = 0;
+        int action = m_pendingAction.exchange(0);
+        if (m_resumePending) {
+            m_resumePending = false;
+            action = 2;
+        }
         if (action == 1) {
-            RLOG("action: restore default HDMI mode");
+            RLOG("action: restore the system HDMI mode");
+            m_policyActive = false;
+            m_inFallback = false;
+            m_renderer.ReleaseSwapchain();
             return RestoreDefaultAndMeasure();
         }
         if (action == 2) {
-            RLOG("action: retry best HDMI mode");
-            return TryBestMode();
+            RLOG("action: re-apply output policy");
+            return ApplyPolicy();
+        }
+        if (action == 3) {
+            RLOG("action: diagnostic mode matrix (then re-apply the policy)");
+            m_policyActive = false;
+            return TryBestMode() && ApplyPolicy();
         }
         return true;
     }
@@ -388,11 +505,13 @@ private:
                 break;
             case SDL_APP_WILLENTERBACKGROUND:
                 RLOG("event: will enter background");
-                renpyuwp::display::RestoreDefault();
                 break;
             case SDL_APP_DIDENTERFOREGROUND:
                 RLOG("event: did enter foreground");
-                renpyuwp::display::Reapply();
+                break;
+            case SDL_APP_TERMINATING:
+                RLOG("event: terminating -> restoring the system display mode");
+                renpyuwp::display::RestoreDefault();
                 break;
             case SDL_CONTROLLERDEVICEADDED: {
                 SDL_GameController* gc = SDL_GameControllerOpen(e.cdevice.which);
@@ -441,19 +560,24 @@ private:
                 RLOG("input: button B -> color %s", kColorNames[m_color]);
                 break;
             case SDL_CONTROLLER_BUTTON_X:
-                RLOG("input: button X -> fps report");
+                RLOG("input: button X -> fps and vram report");
                 ReportFps("on request (since last report)");
+                m_renderer.LogVideoMemory("on request");
+                break;
+            case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
+                RLOG("input: button RB -> diagnostic mode matrix");
+                if (m_haveHdmi) m_pendingAction = 3;
                 break;
             case SDL_CONTROLLER_BUTTON_Y:
                 RLOG("input: button Y -> storage probe");
                 renpyuwp::storage::RunAsync();
                 break;
             case SDL_CONTROLLER_BUTTON_BACK:
-                RLOG("input: button View -> default HDMI mode");
+                RLOG("input: button View -> system HDMI mode");
                 if (m_haveHdmi) m_pendingAction = 1;
                 break;
             case SDL_CONTROLLER_BUTTON_START:
-                RLOG("input: button Menu -> retry 4K120");
+                RLOG("input: button Menu -> re-apply 4K120/1440p policy");
                 if (m_haveHdmi) m_pendingAction = 2;
                 break;
             default:
@@ -469,7 +593,12 @@ private:
     LONGLONG m_pumpTicks = 0;
     LONGLONG m_presentTicks = 0;
     int m_color = 0;
-    int m_pendingAction = 0;
+    std::atomic<int> m_pendingAction{0};
+    std::atomic<bool> m_resumePending{false};
+    std::atomic<bool> m_suspendedWithPolicy{false};
+    bool m_policyActive = false;
+    bool m_inFallback = false;
+    ULONGLONG m_lastPresent = 0;
     UINT m_syncInterval = 1;
     renpyuwp::display::Mode m_activeMode;
     bool m_haveHdmi = false;

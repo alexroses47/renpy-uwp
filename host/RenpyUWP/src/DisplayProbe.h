@@ -23,7 +23,7 @@ bool Init();
 // Current output mode (0x0 if unavailable).
 Mode Current();
 
-// Candidate modes in order of preference: 4K120, 1440p120, 4K60, 1080p120.
+// Candidate modes: 0=4K120, 1=1440p120, 2=4K60, 3=1080p120, 4=1080p60 (fallback).
 int CandidateCount();
 const char* CandidateLabel(int index);
 

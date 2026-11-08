@@ -13,6 +13,42 @@ bool Renderer::Init(IUnknown* coreWindow, uint32_t width, uint32_t height) {
     return CreateDevice() && CreateSwapchain(width, height);
 }
 
+void Renderer::ReleaseSwapchain() {
+    if (m_context) {
+        m_context->OMSetRenderTargets(0, nullptr, nullptr);
+        m_context->ClearState();
+        m_context->Flush();
+    }
+    m_rtv = nullptr;
+    if (m_frameWait) {
+        CloseHandle(m_frameWait);
+        m_frameWait = nullptr;
+    }
+    m_swapchain = nullptr;
+    RLOG("swapchain released");
+}
+
+void Renderer::LogVideoMemory(const char* when) const {
+    if (!m_device) return;
+    try {
+        winrt::com_ptr<IDXGIAdapter> adapter;
+        if (FAILED(m_device.as<IDXGIDevice>()->GetAdapter(adapter.put()))) return;
+        auto a3 = adapter.try_as<IDXGIAdapter3>();
+        if (!a3) {
+            RLOG("vram (%s): IDXGIAdapter3 not available", when);
+            return;
+        }
+        DXGI_QUERY_VIDEO_MEMORY_INFO local{}, nonLocal{};
+        HRESULT hl = a3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &local);
+        HRESULT hn = a3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL, &nonLocal);
+        RLOG("vram (%s): local budget %llu MB usage %llu MB (hr 0x%08lx); non-local budget %llu MB usage %llu MB (hr 0x%08lx)",
+             when, local.Budget >> 20, local.CurrentUsage >> 20, static_cast<unsigned long>(hl), nonLocal.Budget >> 20,
+             nonLocal.CurrentUsage >> 20, static_cast<unsigned long>(hn));
+    } catch (...) {
+        RLOG("vram (%s): query failed", when);
+    }
+}
+
 long Renderer::DeviceRemovedReason() const {
     return m_device ? static_cast<long>(m_device->GetDeviceRemovedReason()) : 0;
 }
@@ -54,6 +90,7 @@ bool Renderer::CreateDevice() {
          static_cast<unsigned long long>(adesc.DedicatedVideoMemory >> 20),
          static_cast<unsigned long long>(adesc.SharedSystemMemory >> 20));
     winrt::check_hresult(adapter->GetParent(IID_PPV_ARGS(m_factory.put())));
+    LogVideoMemory("device created");
     return true;
 }
 
@@ -98,6 +135,8 @@ bool Renderer::Recreate(uint32_t width, uint32_t height) {
     long reason = DeviceRemovedReason();
     if (reason != 0) {
         RLOG("D3D device was REMOVED, reason 0x%08lx; creating a new device", static_cast<unsigned long>(reason));
+        LogVideoMemory("device removed");
+        ++m_deviceLosses;
         ReleaseAll();
         if (!CreateDevice()) return false;
         RLOG("recreating swapchain at %ux%u", width, height);
@@ -117,6 +156,8 @@ bool Renderer::Recreate(uint32_t width, uint32_t height) {
     long removed = DeviceRemovedReason();
     if (removed == 0) return false;
     RLOG("D3D device was REMOVED, reason 0x%08lx; creating a new device", static_cast<unsigned long>(removed));
+    LogVideoMemory("device removed");
+    ++m_deviceLosses;
     ReleaseAll();
     return CreateDevice() && CreateSwapchain(width, height);
 }
@@ -148,10 +189,15 @@ bool Renderer::CreateTargets() {
         return false;
     }
     RLOG("swapchain ready: %ux%u", m_width, m_height);
+    LogVideoMemory("swapchain created");
     return true;
 }
 
 Renderer::FrameResult Renderer::Frame(const float rgba[4], DWORD waitMs, UINT syncInterval) {
+    if (!m_swapchain || !m_rtv) {
+        ++m_skipped;
+        return FrameResult::Skipped;
+    }
     if (m_frameWait && WaitForSingleObjectEx(m_frameWait, waitMs, TRUE) != WAIT_OBJECT_0) {
         ++m_skipped;
         return FrameResult::Skipped;

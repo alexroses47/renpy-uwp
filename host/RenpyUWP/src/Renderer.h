@@ -7,7 +7,7 @@
 #include <windows.h>
 
 #include <d3d11.h>
-#include <dxgi1_3.h>
+#include <dxgi1_4.h>
 
 #include <cstdint>
 
@@ -26,6 +26,12 @@ public:
     bool Recreate(uint32_t width, uint32_t height);
     // S_OK if the device is healthy, otherwise the DXGI removal reason.
     long DeviceRemovedReason() const;
+    // Number of times a removed device was replaced since startup.
+    uint32_t DeviceLosses() const { return m_deviceLosses; }
+    // Drops the swapchain (call before an HDMI mode change). Frame() skips until Recreate().
+    void ReleaseSwapchain();
+    // Logs the video memory budget/usage (IDXGIAdapter3::QueryVideoMemoryInfo).
+    void LogVideoMemory(const char* when) const;
     enum class FrameResult { Presented, Skipped, Error };
     // Waits (at most `waitMs`) for the swapchain to accept a frame, then clears and presents with vsync.
     // Skipped = the display did not release a buffer in time (no vsync), so nothing was presented.
@@ -50,6 +56,7 @@ private:
     winrt::com_ptr<IDXGISwapChain1> m_swapchain;
     HANDLE m_frameWait = nullptr;
     uint32_t m_skipped = 0;
+    uint32_t m_deviceLosses = 0;
     winrt::com_ptr<ID3D11RenderTargetView> m_rtv;
     winrt::com_ptr<IDXGIFactory2> m_factory;
     IUnknown* m_coreWindow = nullptr;
