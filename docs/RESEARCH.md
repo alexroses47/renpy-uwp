@@ -1,0 +1,229 @@
+# Investigación — Ren'Py 8 → UWP (Xbox Series S, Dev Mode)
+
+Documento vivo. Cada sección dice qué se verificó, con qué fuente y en qué fecha.
+"No confirmado" significa exactamente eso: no lo pude comprobar en una fuente primaria.
+
+Fecha de esta revisión: **2026-11-08** (Hito 0).
+
+---
+
+## 1. Versión de Ren'Py y de Python
+
+| Dato | Valor | Fuente |
+|---|---|---|
+| Última estable 8.5.x | **8.5.3.26051504** (publicada 2026-05-16) | `gh api repos/renpy/renpy/releases` (no hay release más reciente a 2026-11-08; 8.5.2.26010301, 8.5.1.25123106 y 8.5.0.25111603 son las anteriores) |
+| Tag equivalente en renpy-build | `renpy-8.5.3.26051504` | `gh api repos/renpy/renpy-build/tags` |
+| Python (Linux/mac/Android/iOS) | **CPython 3.12.8** | `renpy-build/tasks/python3.py`: `version = "3.12.8"` |
+| Python (Windows) | **CPython 3.12.7** (fork `msys2-contrib/cpython-mingw`) | `renpy-build/tasks/python3.py`: `win_version = "3.12.7"` |
+| Python (web) | 3.12.8 | `web_version = "3.12.8"` |
+| Requisito del código de Ren'Py | `requires-python = ">=3.12.8,<3.13"` | `renpy/pyproject.toml` en el tag `8.5.3.26051504` |
+
+**Decisión:** fijar **CPython 3.12.8** para UWP. Motivo: es la versión que exige `pyproject.toml`
+de Ren'Py y la que usan todas las plataformas salvo Windows; en Windows usan 3.12.7 solo porque es la
+última que tiene el fork MinGW. Nosotros compilaremos con MSVC desde CPython upstream (`PCbuild/`),
+así que no dependemos de ese fork. Se reconfirmará al empezar el Hito 2.
+
+Nota: en el tag 8.5.3 `pygame_sdl2` ya **no es un repo aparte** para Ren'Py: el código C de pygame vive
+en `renpy/src/pygame/` (y los `.pyx` en el árbol de Ren'Py). El repo `renpy/pygame_sdl2` queda como
+referencia histórica. A verificar en detalle en el Hito 3.
+
+## 2. Cómo compila renpy-build para Windows
+
+Fuente: clon de `renpy/renpy-build` en el tag `renpy-8.5.3.26051504` (commit `7bfab40c`).
+
+- **No usa MSVC.** Compila Windows **desde Linux (Ubuntu 24.04)** con el toolchain cruzado
+  **llvm-mingw 20241217 (UCRT)** de mstorsjo (`tasks/toolchain.py`).
+- Python para Windows: `msys2-contrib/cpython-mingw` (3.12.7) + parches propios
+  (`patches/Python-3.12.7/single-dllmain.diff`, `no-af-hyperv.diff`), configurado con autotools.
+- **ANGLE no se compila**: usa binarios precompilados `prebuilt/x86_64/{libEGL.dll, libGLESv2.dll,
+  d3dcompiler_47.dll}` (`tasks/angle.py`). Son binarios Win32 de escritorio, no válidos para UWP.
+- Dependencias y versiones (`version = ...` en `tasks/*.py` y tarballs en `source/`):
+
+| Dependencia | Versión | Licencia (a confirmar al compilarla) |
+|---|---|---|
+| zlib | 1.3.1 | zlib |
+| bzip2 | 1.0.8 | bzip2 (BSD-like) |
+| xz (liblzma) | 5.4.2 | 0BSD / dominio público |
+| brotli | 1.1.0 | MIT |
+| libffi | 3.4.5 | MIT |
+| openssl | 3.3.2 | Apache-2.0 |
+| libpng | 1.6.43 | libpng |
+| libjpeg-turbo | 1.5.3 | IJG + BSD-3 |
+| libwebp | 1.3.2 | BSD-3 |
+| freetype | 2.13.3 (+ `freetypehb`, segunda build con harfbuzz) | FTL / GPLv2 (usaremos FTL) |
+| harfbuzz | 8.0.1 | MIT ("Old MIT") |
+| fribidi | 1.0.7 | LGPL-2.1+ |
+| SDL2 | **2.0.20** (+ parches en `patches/SDL2-2.0.20/`) | zlib |
+| SDL2_image | 2.6.2 | zlib |
+| libavif | v0.11.1 | BSD-2 |
+| aom | v3.5.0 | BSD-2 + patente AOM |
+| libyuv | HEAD de chromium (sin fijar) | BSD-3 |
+| assimp | v5.4.3 | BSD-3 |
+| FFmpeg | **4.3.1** | LGPL-2.1+ (sin `--enable-gpl`) |
+
+- FFmpeg en renpy-build: `--disable-everything` y solo habilita demuxers (ogg, matroska/webm, mov, mp3,
+  wav, avi, mpegts, av1…), decoders (vorbis, opus, theora, vp8, vp9, mpeg1/2/4, flac, pcm, libaom_av1),
+  `--enable-w32threads`, `--disable-d3d11va --disable-dxva2`. **No** pasa `--enable-gpl` ni `--enable-nonfree`
+  → la configuración ya es LGPL. La replicaremos.
+- Cython: se instala en el venv de renpy-build (versión no fijada en `tasks/cython.py`; usa la del `uv.lock`
+  de Ren'Py — a fijar en el Hito 4).
+
+**Consecuencia para nosotros:** no podemos reutilizar renpy-build tal cual (llvm-mingw desktop + binarios
+Win32). Opciones evaluadas:
+1. **MSVC en GitHub Actions** (`windows-2022`) con `WINAPI_FAMILY=WINAPI_FAMILY_APP`: es lo que usan
+   RetroArch y 2ship UWP. **Elegida.**
+2. llvm-mingw tiene soporte de destinos UWP (`*-w64-mingw32uwp`), y existe
+   [`gianlucamazza/uwp-crossbuild`](https://github.com/gianlucamazza/uwp-crossbuild) (MIT, activo en 2026-10)
+   para compilar C++/WinRT UWP desde Linux con clang-cl + lld-link + SDK bajo Wine. Descartada por ahora:
+   el usuario ya tiene CI en Windows y mezclar CRTs (UCRT de MinGW vs. VCLibs) complica depurar. Queda como
+   plan alternativo si MSVC bloquea algo.
+
+## 3. SDL2 y UWP (WinRT)
+
+Verificado con `gh api repos/libsdl-org/SDL/contents?ref=<tag>`:
+
+| Versión SDL2 | `VisualC-WinRT/` | CMake `WindowsStore` |
+|---|---|---|
+| 2.0.20 (la de Ren'Py 8.5.3) | Sí | Sí (`SDL_BUILDING_WINRT=1` en `CMakeLists.txt`) |
+| 2.30.9 | Sí | Sí |
+| 2.32.10 (última 2.x) | Sí | Sí (+ define `WINAPI_FAMILY=WINAPI_FAMILY_APP`) |
+
+- El backend WinRT de SDL2 está escrito en **C++/CX** (`src/core/winrt/*.cpp`, compila con `/ZW`).
+  Funciona con MSVC v143; no con clang/mingw. Otra razón para MSVC.
+- **SDL3 eliminó WinRT/UWP** (se sustituyó por GDK). Hay que quedarse en SDL2.
+- Patrón probado en Xbox: 2ship2harkinian-uwp arranca con `SDL_WinRTRunApp(bootstrap, NULL)` desde
+  `WinMain`, y SDL2 se encarga de CoreWindow y del mando (vía `Windows.Gaming.Input`; Ren'Py ya parchea
+  `fix-windows_gaming_input.diff` en 2.0.20).
+- **Decisión provisional (Hito 1):** compilar **SDL2 2.0.20 + los parches de Ren'Py que apliquen** con CMake
+  `-DCMAKE_SYSTEM_NAME=WindowsStore -DCMAKE_SYSTEM_VERSION=10.0`. Si 2.0.20 da problemas en WinRT
+  (bugs ya corregidos aguas arriba), subir a **2.32.10** y comprobar que pygame de Ren'Py no use APIs nuevas
+  (la API de SDL2 es retrocompatible). `VisualC-WinRT` (proyecto VS) queda como respaldo.
+- Para el host del Hito 0/1 usamos C++/WinRT (no C++/CX): conviven sin problema; solo SDL2 se compila con `/ZW`.
+
+## 4. ANGLE para UWP (2026)
+
+| Opción | Estado | Valoración |
+|---|---|---|
+| NuGet `ANGLE.WindowsStore` (Microsoft) | Última 2.1.13, publicada **2016-12-28** (2.1.14 está deslistada). | Muy antigua (GLES 2/3.0 parcial, bugs conocidos). Descartada salvo emergencia. |
+| `microsoft/angle` (ramas `ms-master`, `winrt`, `uwp-2017`) | Sin cambios desde **2023-06-13** (último push); no archivado. | Igual de antigua en lo funcional. Descartada. |
+| Google ANGLE upstream | Retiró el soporte WinRT (no se puede compilar para UWP sin parches). | Requiere parches. |
+| **`SternXD/angle`** (fork de upstream, descripción "A conformant OpenGL ES implementation for UWP") | Último push **2025-03-10**. Es el que **usa RetroArch** para UWP: `pkg/msvc/msvc-uwp/ANGLE/README.md` dice que sus binarios x64/ARM64 salen de ese fork, basado en el commit upstream `6c2737be88`. | **Recomendada.** Moderna, probada en Xbox Series por RetroArch. |
+| Mesa UWP (`SternXD/mesa-uwp`, rama `uwp-25.3.3`) | RetroArch también la incluye (GL de escritorio sobre D3D12 vía dozen/gallium). | Plan B si ANGLE falla con el renderer de Ren'Py. |
+
+- Ren'Py en Windows ya usa ANGLE (GLES2 sobre D3D11) — su renderer `gl2` soporta GLES2. Así que no hace
+  falta GL de escritorio.
+- **Direct3D en Xbox Series X|S** (Chuck Walbourn, ["DirectX and UWP on Xbox Series X|S"](https://walbourn.github.io/directx-and-uwp-on-xbox-series-x-s/), 2022):
+  **D3D11 FL 11.0 y D3D12 FL 11.0 tanto en modo App como Game**. El backend D3D11 de ANGLE es válido.
+  Requiere Windows SDK **22621 o superior** (SHA1 ya no se acepta en Xbox) → usamos 10.0.22621.0
+  (instalado en `windows-2022`, también 10.0.26100.0).
+- **Decisión (Hito 3):** compilar `SternXD/angle` nosotros en CI (gn + ninja con `target_os="winuwp"`), fijando
+  commit. Si la build de ANGLE es demasiado pesada para CI, usar temporalmente los binarios de RetroArch
+  (`pkg/msvc/msvc-uwp/ANGLE/x64/`, BSD-3), citando la procedencia en `THIRD_PARTY_NOTICES.md`.
+  No confirmado aún: las instrucciones exactas de build del fork (hay que leer su `doc/` en el Hito 3).
+
+## 5. Despliegue desde Linux
+
+### 5.1 openappx (opción principal)
+
+- PyPI `openappx` **0.7.0** (repo `gianlucamazza/openappx`). El README afirma que la cadena
+  pack → sign → deploy → launch está **verificada en una Xbox Series S dev kit (2026-08-08)**, y su código
+  tiene notas observadas en Xbox OS 26100.8866 (la misma rama de SO que la consola del usuario).
+- Probado localmente (`pip install 'openappx[sign]==0.7.0'` en un venv): CLI
+  `openappx deploy --device URL --user NAME (--package F | --list | --uninstall PFN | --start PFN | --stop PFN | --install-cert CER) [--also-upload ...] [--app-id ID] [--pin-sha256 HEX | --insecure] [--csrf-bypass]`.
+  La contraseña se pasa por la variable `OPENAPPX_DEVICE_PASSWORD` (no aparece en `ps`).
+- `--pin-sha256` = SHA-256 del certificado DER del Device Portal:
+  `openssl s_client -connect IP:11443 </dev/null 2>/dev/null | openssl x509 -outform DER | sha256sum`.
+- CSRF: hace el handshake cookie `CSRF-Token` → cabecera `X-CSRF-Token`.
+- `--start` necesita el `PackageFullName` y el `Application/@Id`; según el código, en Xbox el portal exige
+  `appid` (AUMID `PackageFamilyName!AppId`) **y** `package`, ambos **en base64** (lo que la doc llama "hex64").
+- Nosotros **firmamos en CI con signtool (MSBuild)**; openappx solo despliega. (openappx también sabe empaquetar
+  y firmar, útil como respaldo.)
+
+### 5.2 API REST del Device Portal (respaldo con `curl`)
+
+Fuente: [Device Portal core API reference](https://learn.microsoft.com/en-us/windows/uwp/debug-test-perf/device-portal-api-core)
+y [Device Portal overview — CSRF](https://learn.microsoft.com/en-us/windows/uwp/debug-test-perf/device-portal).
+
+| Acción | Petición |
+|---|---|
+| Instalar (con dependencias) | `POST /api/app/packagemanager/package?package=<nombre .msix>`; cuerpo `multipart/form-data`, un campo `file` por archivo (paquete + dependencias) |
+| Estado de la instalación | `GET /api/app/packagemanager/state` → 200 resultado / 204 en curso / 404 nada |
+| Listar paquetes | `GET /api/app/packagemanager/packages` → `{"InstalledPackages":[{"Name","PackageFullName","PackageFamilyName",...}]}` |
+| Desinstalar | `DELETE /api/app/packagemanager/package?package=<PackageFullName>` |
+| Lanzar app | `POST /api/taskmanager/app?appid=<b64(AUMID)>&package=<b64(PFN)>` |
+| Carpetas conocidas | `GET /api/filesystem/apps/knownfolders` |
+| Listar archivos | `GET /api/filesystem/apps/files?knownfolderid=LocalAppData&packagefullname=<PFN>&path=<subdir>` |
+| Descargar archivo | `GET /api/filesystem/apps/file?knownfolderid=LocalAppData&packagefullname=<PFN>&path=<subdir>&filename=<archivo>` |
+
+- CSRF: todas las peticiones no-GET por HTTPS necesitan la cabecera `X-CSRF-Token` copiada de la cookie
+  `CSRF-Token` (se obtiene con un GET previo). Alternativa documentada: usuario con prefijo `auto-`
+  (no usar ese nombre en el navegador). Las descargas (GET) no lo necesitan.
+- Con curl se puede fijar la clave pública aunque el certificado sea autofirmado:
+  `curl -k --pinnedpubkey 'sha256//<base64>'` (curl verifica el pin incluso con `-k`).
+- No confirmado: el formato exacto de `path` para LocalState (`\LocalState` vs `LocalState`). `ci/fetch-logs.sh`
+  prueba ambos y, si falla, lista la raíz para diagnosticar.
+
+### 5.3 Firma y certificado
+
+- El `CN` del certificado debe ser igual a `Identity/@Publisher` del manifiesto → usamos **`CN=RenpyUWP`**.
+- Certificado autofirmado con `basicConstraints=CA:FALSE`, `keyUsage=digitalSignature`, `extendedKeyUsage=codeSigning`.
+  PFX exportado con `PBE-SHA1-3DES` + MAC SHA1 (formato que entiende cualquier signtool/CryptoAPI;
+  el AES-256 por defecto de OpenSSL 3 puede fallar en versiones antiguas de Windows). Comandos probados
+  localmente con OpenSSL 3.5.3.
+- En Xbox Dev Mode la instalación por Device Portal no suele requerir confiar el certificado; si aparece un error
+  de confianza (p. ej. `0x800B0109`), `openappx deploy --install-cert` lo instala (`ci/deploy.sh --install-cert`).
+  No confirmado en la consola del usuario todavía.
+
+## 6. Prior art: USB, mando y 4K
+
+### 2ship2harkinian-uwp (`XboxEmulationHub/2ship2harkinian-uwp`, rama `uwp`, push 2025-12-14)
+- Manifiesto (`vs2022-uwp/uwp/Package.appxmanifest`): capacidades `broadFileSystemAccess`, `expandedResources`,
+  `runFullTrust` (rescap), `removableStorage`, `codeGeneration`, `internetClient(Server)`, `privateNetworkClientServer`.
+- **USB/almacenamiento:** usa rutas Win32 directas (`std::filesystem`) a `D:/2ship/` o `E:/2ship/`, o LocalState,
+  según un ajuste en `LocalSettings` (`vs2022-uwp/uwp/src/main.cpp`). Es decir: con `broadFileSystemAccess`
+  en Dev Mode, las APIs Win32 normales llegan a la unidad USB.
+- **Mando:** delega en SDL2 (`SDL_WinRTRunApp`).
+- **Resolución:** su menú de arranque fija 1920×1080; el render principal crea el swapchain con
+  `CreateSwapChainForCoreWindow` (`dx11glue.cpp`). No implementa 4K explícitamente.
+
+### RetroArch UWP (`libretro/RetroArch`, `os/uwp/uwp_main.cpp`, `libretro-common/vfs/vfs_implementation_uwp.cpp`)
+- **USB/almacenamiento:** `broadFileSystemAccess` + las APIs `*FromAppW` (`CreateFile2FromAppW`,
+  `GetFileAttributesExFromAppW`, `CreateDirectoryFromAppW`, `DeleteFileFromAppW`…, de `fileapifromapp.h`).
+  Si falta el permiso abre `ms-settings:privacy-broadfilesystemaccess`.
+- **Mando:** driver propio `input/drivers/uwp_input.c` (Windows.Gaming.Input).
+- **Resolución 4K:** si `AnalyticsInfo::VersionInfo().DeviceFamily() == L"Windows.Xbox"`, lee
+  `HdmiDisplayInformation::GetForCurrentView().GetCurrentDisplayMode().ResolutionWidthInRawPixels()` /
+  `ResolutionHeightInRawPixels()` (y `RefreshRate()`), y usa ese tamaño para la superficie EGL de ANGLE.
+- Modelo de consola: `GetGamingDeviceModelInformation`.
+- Walbourn (2022): **para Series S, usar 1440p (2560×1440) en vez de 4K**; la consola escala.
+
+**Implicación para CPython (Hito 2, riesgo principal):** CPython usa `CreateFileW`, `FindFirstFileW`, etc. Hay que
+verificar en la consola si funcionan sobre `E:\` con `broadFileSystemAccess` (2ship sugiere que sí) o si hay
+que parchear `Modules/posixmodule.c`/`Python/fileutils.c` para usar las variantes `*FromAppW` como RetroArch.
+
+## 7. App vs Game en Xbox
+
+Fuentes: Walbourn 2017/2022 y la página archivada de Microsoft
+[System resources for UWP apps and games on Xbox](https://learn.microsoft.com/en-us/windows/uwp/xbox-apps/system-resource-allocation).
+- Memoria en primer plano: **App 1 GB, Game 5 GB** (cifras genéricas Xbox One/Series; no hay cifra específica
+  para Series S → no confirmado). GPU: App ~45 % compartido; Game acceso completo.
+- Cambiar a Game: Dev Home → seleccionar la app → View/Ver detalles → "App type" = **Game**.
+  La capacidad `expandedResources` (que incluimos) también la marca como juego en Dev Mode; está obsoleta para la Store.
+
+## 8. Entorno de CI
+
+- `windows-2022` (runner-images, a 2026-11): Windows Server 2022 (10.0.20348), **Visual Studio Enterprise 2022
+  17.14**, workload `Microsoft.VisualStudio.Workload.Universal`, Windows SDK **10.0.22621.0** y **10.0.26100.0**.
+- VCLibs para UWP: `C:\Program Files (x86)\Microsoft SDKs\Windows Kits\10\ExtensionSDKs\Microsoft.VCLibs\14.0\Appx\Retail\x64\Microsoft.VCLibs.x64.14.00.appx`
+  (MSBuild también la copia a `Dependencies\x64\` al empaquetar en modo sideload).
+- C++/WinRT: usamos las cabeceras que trae el Windows SDK (`Include\<ver>\cppwinrt`) para no depender de NuGet en el Hito 0.
+
+## 9. Decisiones del Hito 0
+
+- Host mínimo C++/WinRT (CoreApplication + D3D11 que limpia la pantalla a un color fijo + log en LocalState),
+  proyecto `.vcxproj` escrito a mano, MSBuild en CI, firmado con signtool vía MSBuild.
+  (SDL2 entra en el Hito 1; este host solo prueba la cadena build → firma → deploy → log.)
+- Identidad: `Name="RenpyUWP"`, `Publisher="CN=RenpyUWP"`, `Application Id="App"`.
+- La versión del paquete la fija CI: `0.0.<run_number>.0`, para que cada despliegue sea una actualización.
+- Ren'Py se descargará en CI por tag (`renpy/VERSION`) en vez de submódulo: evita clones pesados y deja el tag
+  fijado en un único sitio.
