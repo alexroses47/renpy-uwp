@@ -145,8 +145,9 @@ bool TryTestFile(const std::wstring& root) {
     HANDLE h = CreateFile2FromAppW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, nullptr);
     ReadWithHandle(h, "CreateFile2FromAppW", GetLastError());
 
-    h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    ReadWithHandle(h, "CreateFileW (plain Win32, what CPython uses)", GetLastError());
+    // CreateFileW is not declared for WINAPI_FAMILY_APP; CreateFile2 is the plain Win32 equivalent there.
+    h = CreateFile2(path.c_str(), GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, nullptr);
+    ReadWithHandle(h, "CreateFile2 (plain Win32)", GetLastError());
 
     FILE* f = nullptr;
     errno_t e = _wfopen_s(&f, path.c_str(), L"rb");
