@@ -129,25 +129,16 @@ public:
         }
         Measure(3.0, "baseline (initial output mode)");
 
-        if (haveHdmi) {
-            auto best = renpyuwp::display::RequestBest([this] { PumpEvents(); });
-            LogWindowState("after HDMI request");
-            if (best.width && !m_renderer.Recreate(best.width, best.height)) {
-                RLOG("fatal: swapchain recreation failed");
-                return 1;
-            }
-            char label[96];
-            snprintf(label, sizeof(label), "final output %ux%u @ %.3f Hz, swapchain %ux%u", best.width, best.height,
-                     best.refreshHz, m_renderer.Width(), m_renderer.Height());
-            Measure(5.0, label);
-        }
+        m_haveHdmi = haveHdmi;
+        if (haveHdmi && !TryBestMode()) return 1;
 
-        RLOG("entering main loop (A/B: color, X: fps report, Y: rerun storage probe)");
+        RLOG("entering main loop (A/B: color, X: fps report, Y: storage probe, View: default HDMI mode, Menu: retry 4K120)");
         m_meter.Start();
         m_lastPeriodicReport = GetTickCount64();
         ResetTimers();
         while (m_running) {
             TimedPump();
+            if (!RunPendingAction()) break;
             if (!Frame()) break;
             if (GetTickCount64() - m_lastPeriodicReport > 30000) {
                 ReportFps("periodic (last 30 s)");
@@ -164,6 +155,50 @@ public:
     }
 
 private:
+    // Switches HDMI to the best candidate mode, rebuilds the swapchain at that size and measures fps.
+    bool TryBestMode() {
+        auto best = renpyuwp::display::RequestBest([this] { PumpEvents(); });
+        LogWindowState("after HDMI request");
+        return RebuildAndMeasure(best, "final output");
+    }
+
+    bool RebuildAndMeasure(const renpyuwp::display::Mode& mode, const char* what) {
+        uint32_t w = mode.width ? mode.width : 1920, h = mode.height ? mode.height : 1080;
+        if (!m_renderer.Recreate(w, h)) {
+            RLOG("fatal: swapchain recreation failed");
+            return false;
+        }
+        char label[128];
+        snprintf(label, sizeof(label), "%s %ux%u @ %.3f Hz, swapchain %ux%u", what, mode.width, mode.height,
+                 mode.refreshHz, m_renderer.Width(), m_renderer.Height());
+        Measure(5.0, label);
+        m_meter.Start();
+        ResetTimers();
+        m_lastPeriodicReport = GetTickCount64();
+        return true;
+    }
+
+    // Button actions that need their own wait/measure loops run here, outside event handling.
+    bool RunPendingAction() {
+        int action = m_pendingAction;
+        m_pendingAction = 0;
+        if (action == 1) {
+            RLOG("action: restore default HDMI mode");
+            renpyuwp::display::RestoreDefault();
+            ULONGLONG until = GetTickCount64() + 3000;
+            while (GetTickCount64() < until) {
+                PumpEvents();
+                Sleep(10);
+            }
+            return RebuildAndMeasure(renpyuwp::display::Current(), "default output");
+        }
+        if (action == 2) {
+            RLOG("action: retry best HDMI mode");
+            return TryBestMode();
+        }
+        return true;
+    }
+
     void LogWindowState(const char* when) {
         try {
             auto cw = winrt::Windows::UI::Core::CoreWindow::GetForCurrentThread();
@@ -324,6 +359,14 @@ private:
                 RLOG("input: button Y -> storage probe");
                 renpyuwp::storage::RunAsync();
                 break;
+            case SDL_CONTROLLER_BUTTON_BACK:
+                RLOG("input: button View -> default HDMI mode");
+                if (m_haveHdmi) m_pendingAction = 1;
+                break;
+            case SDL_CONTROLLER_BUTTON_START:
+                RLOG("input: button Menu -> retry 4K120");
+                if (m_haveHdmi) m_pendingAction = 2;
+                break;
             default:
                 RLOG("input: button %s", name ? name : "?");
                 break;
@@ -337,6 +380,8 @@ private:
     LONGLONG m_pumpTicks = 0;
     LONGLONG m_presentTicks = 0;
     int m_color = 0;
+    int m_pendingAction = 0;
+    bool m_haveHdmi = false;
     bool m_running = true;
 };
 
