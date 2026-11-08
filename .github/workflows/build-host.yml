@@ -1,0 +1,132 @@
+name: build-host
+
+# Milestone 0: build the UWP host, package it as .msix, sign it and publish it
+# (plus the VCLibs dependency and the public .cer) as the artifact "renpy-uwp-x64".
+#
+#   gh workflow run build-host.yml
+#   gh run watch
+#   gh run download -n renpy-uwp-x64
+
+on:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: MSBuild configuration
+        type: choice
+        options: [Release, Debug]
+        default: Release
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-host-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      CONFIGURATION: ${{ inputs.configuration || 'Release' }}
+      SDK_VERSION: 10.0.22621.0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that no game assets or secrets are tracked
+        shell: bash
+        run: bash ci/check-no-game-assets.sh
+
+      - uses: microsoft/setup-msbuild@v2
+
+      - name: Decode signing certificate
+        shell: pwsh
+        env:
+          PFX_B64: ${{ secrets.UWP_CERT_PFX_BASE64 }}
+          PFX_PASS: ${{ secrets.UWP_CERT_PASSWORD }}
+        run: |
+          if (-not $env:PFX_B64 -or -not $env:PFX_PASS) {
+            throw "Secrets UWP_CERT_PFX_BASE64 and/or UWP_CERT_PASSWORD are not set (see docs/SIGNING.md)"
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP 'renpy-uwp.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX_B64.Trim()))
+          $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($pfx, $env:PFX_PASS)
+          Write-Host "Certificate: $($cert.Subject)  thumbprint=$($cert.Thumbprint)  notAfter=$($cert.NotAfter)"
+          [xml]$m = Get-Content host/RenpyUWP/Package.appxmanifest
+          $publisher = $m.Package.Identity.Publisher
+          if ($cert.Subject -ne $publisher) {
+            throw "Certificate subject '$($cert.Subject)' does not match manifest Publisher '$publisher'"
+          }
+          $cer = Join-Path $env:RUNNER_TEMP 'RenpyUWP.cer'
+          [IO.File]::WriteAllBytes($cer, $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+          "PFX_PATH=$pfx" >> $env:GITHUB_ENV
+          "CER_PATH=$cer" >> $env:GITHUB_ENV
+
+      - name: Set package version (0.0.<run_number>.0)
+        shell: pwsh
+        run: |
+          $version = "0.0.$($env:GITHUB_RUN_NUMBER).0"
+          $path = (Resolve-Path host/RenpyUWP/Package.appxmanifest).Path
+          [xml]$m = Get-Content $path
+          $m.Package.Identity.Version = $version
+          $m.Save($path)
+          Write-Host "Package version: $version"
+          "PACKAGE_VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Build and package (unsigned)
+        shell: pwsh
+        run: |
+          $pkgDir = (Join-Path $env:GITHUB_WORKSPACE 'out/AppPackages').Replace('\', '/') + '/'
+          msbuild host/RenpyUWP/RenpyUWP.vcxproj /m /nologo /v:minimal `
+            /p:Configuration=$env:CONFIGURATION /p:Platform=x64 `
+            /p:AppxPackageDir=$pkgDir `
+            /p:AppxPackageSigningEnabled=false
+          if ($LASTEXITCODE -ne 0) { throw "msbuild failed with exit code $LASTEXITCODE" }
+          Get-ChildItem -Recurse out/AppPackages | Select-Object FullName, Length | Format-Table -AutoSize | Out-String -Width 300
+
+      - name: Sign package
+        shell: pwsh
+        env:
+          PFX_PASS: ${{ secrets.UWP_CERT_PASSWORD }}
+        run: |
+          $signtool = "${env:ProgramFiles(x86)}\Windows Kits\10\bin\$env:SDK_VERSION\x64\signtool.exe"
+          if (-not (Test-Path $signtool)) { throw "signtool not found at $signtool" }
+          $pkg = Get-ChildItem -Recurse out/AppPackages -Include *.msix, *.appx |
+                 Where-Object { $_.FullName -notmatch '\\Dependencies\\' } | Select-Object -First 1
+          if (-not $pkg) { throw "No .msix/.appx produced" }
+          & $signtool sign /fd SHA256 /f $env:PFX_PATH /p $env:PFX_PASS $pkg.FullName
+          if ($LASTEXITCODE -ne 0) { throw "signtool sign failed" }
+          # Trust the cert on the runner only to verify the signature end to end.
+          Import-Certificate -FilePath $env:CER_PATH -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+          & $signtool verify /pa /v $pkg.FullName
+          if ($LASTEXITCODE -ne 0) { throw "signtool verify failed" }
+          "PKG_PATH=$($pkg.FullName)" >> $env:GITHUB_ENV
+
+      - name: Stage artifact
+        shell: pwsh
+        run: |
+          $dist = New-Item -ItemType Directory -Force dist
+          $deps = New-Item -ItemType Directory -Force dist/Dependencies/x64
+          Copy-Item $env:PKG_PATH $dist
+          Copy-Item $env:CER_PATH $dist
+          $vclibs = Get-ChildItem -Recurse out/AppPackages -Filter 'Microsoft.VCLibs.x64.*.appx' |
+                    Where-Object { $_.FullName -match '\\Dependencies\\x64\\' }
+          if (-not $vclibs) {
+            $flavor = if ($env:CONFIGURATION -eq 'Debug') { 'Debug' } else { 'Retail' }
+            $vclibs = Get-ChildItem "${env:ProgramFiles(x86)}\Microsoft SDKs\Windows Kits\10\ExtensionSDKs\Microsoft.VCLibs\14.0\Appx\$flavor\x64\*.appx"
+            if (-not $vclibs) { throw "VCLibs .appx not found" }
+          }
+          $vclibs | Copy-Item -Destination $deps
+          @{
+            name = 'RenpyUWP'; version = $env:PACKAGE_VERSION; arch = 'x64'; appId = 'App'
+            configuration = $env:CONFIGURATION; commit = $env:GITHUB_SHA; run = $env:GITHUB_RUN_ID
+            package = (Split-Path -Leaf $env:PKG_PATH)
+          } | ConvertTo-Json | Set-Content -Encoding utf8 dist/package-info.json
+          Get-ChildItem -Recurse dist | Select-Object FullName, Length | Format-Table -AutoSize | Out-String -Width 300
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: renpy-uwp-x64
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
