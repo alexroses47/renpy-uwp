@@ -9,6 +9,32 @@
 namespace renpyuwp {
 
 bool Renderer::Init(IUnknown* coreWindow, uint32_t width, uint32_t height) {
+    m_coreWindow = coreWindow;
+    return CreateDevice() && CreateSwapchain(width, height);
+}
+
+long Renderer::DeviceRemovedReason() const {
+    return m_device ? static_cast<long>(m_device->GetDeviceRemovedReason()) : 0;
+}
+
+void Renderer::ReleaseAll() {
+    if (m_context) {
+        m_context->OMSetRenderTargets(0, nullptr, nullptr);
+        m_context->ClearState();
+        m_context->Flush();
+    }
+    m_rtv = nullptr;
+    if (m_frameWait) {
+        CloseHandle(m_frameWait);
+        m_frameWait = nullptr;
+    }
+    m_swapchain = nullptr;
+    m_factory = nullptr;
+    m_context = nullptr;
+    m_device = nullptr;
+}
+
+bool Renderer::CreateDevice() {
     D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1};
     D3D_FEATURE_LEVEL got{};
     HRESULT hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels,
@@ -28,8 +54,7 @@ bool Renderer::Init(IUnknown* coreWindow, uint32_t width, uint32_t height) {
          static_cast<unsigned long long>(adesc.DedicatedVideoMemory >> 20),
          static_cast<unsigned long long>(adesc.SharedSystemMemory >> 20));
     winrt::check_hresult(adapter->GetParent(IID_PPV_ARGS(m_factory.put())));
-    m_coreWindow = coreWindow;
-    return CreateSwapchain(width, height);
+    return true;
 }
 
 bool Renderer::CreateSwapchain(uint32_t width, uint32_t height) {
@@ -70,6 +95,14 @@ bool Renderer::Resize(uint32_t width, uint32_t height) {
 }
 
 bool Renderer::Recreate(uint32_t width, uint32_t height) {
+    long reason = DeviceRemovedReason();
+    if (reason != 0) {
+        RLOG("D3D device was REMOVED, reason 0x%08lx; creating a new device", static_cast<unsigned long>(reason));
+        ReleaseAll();
+        if (!CreateDevice()) return false;
+        RLOG("recreating swapchain at %ux%u", width, height);
+        return CreateSwapchain(width, height);
+    }
     m_context->OMSetRenderTargets(0, nullptr, nullptr);
     m_rtv = nullptr;
     if (m_frameWait) {
@@ -80,7 +113,12 @@ bool Renderer::Recreate(uint32_t width, uint32_t height) {
     m_context->ClearState();
     m_context->Flush();
     RLOG("recreating swapchain at %ux%u", width, height);
-    return CreateSwapchain(width, height);
+    if (CreateSwapchain(width, height)) return true;
+    long removed = DeviceRemovedReason();
+    if (removed == 0) return false;
+    RLOG("D3D device was REMOVED, reason 0x%08lx; creating a new device", static_cast<unsigned long>(removed));
+    ReleaseAll();
+    return CreateDevice() && CreateSwapchain(width, height);
 }
 
 void Renderer::TakePresentStats(uint32_t& ok, uint32_t& occluded, uint32_t& other, long& lastOther,

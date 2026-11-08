@@ -21,8 +21,11 @@ class Renderer {
 public:
     bool Init(IUnknown* coreWindow, uint32_t width, uint32_t height);
     bool Resize(uint32_t width, uint32_t height);
-    // Destroys and creates the swapchain again (needed after an HDMI mode change).
+    // Destroys and creates the swapchain again (needed after an HDMI mode change). If the D3D device
+    // was removed (GPU reset), logs the reason and creates a new device first.
     bool Recreate(uint32_t width, uint32_t height);
+    // S_OK if the device is healthy, otherwise the DXGI removal reason.
+    long DeviceRemovedReason() const;
     enum class FrameResult { Presented, Skipped, Error };
     // Waits (at most `waitMs`) for the swapchain to accept a frame, then clears and presents with vsync.
     // Skipped = the display did not release a buffer in time (no vsync), so nothing was presented.
@@ -37,6 +40,8 @@ public:
     uint32_t Height() const { return m_height; }
 
 private:
+    bool CreateDevice();
+    void ReleaseAll();
     bool CreateTargets();
     bool CreateSwapchain(uint32_t width, uint32_t height);
 

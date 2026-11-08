@@ -155,29 +155,70 @@ public:
     }
 
 private:
-    // Watchdog over the candidate modes: a mode is only kept if frames really reach the display
-    // (fps >= 40% of the refresh rate). Otherwise the next candidate is tried, then the default mode.
-    bool TryBestMode() {
+    // Test matrix: HDMI mode x swapchain size. Separates "the output mode does not run" from
+    // "this swapchain size cannot be scanned out at this rate". Riskiest trial (4K swapchain at
+    // 120 Hz, which removed the D3D device in build 0.0.12) goes last. The best working
+    // combination is applied at the end. Candidate indexes: see DisplayProbe (0=4K120, 2=4K60).
+    struct Trial {
+        int candidate;
+        uint32_t sw, sh;
+        double hz = 0, fps = 0;
+        bool set = false;
+    };
+
+    bool RunTrial(Trial& t) {
         auto pump = [this] { PumpEvents(); };
-        for (int i = 0; i < renpyuwp::display::CandidateCount(); ++i) {
-            renpyuwp::display::Mode active;
-            if (!renpyuwp::display::RequestCandidate(i, pump, active)) continue;
-            LogWindowState("after HDMI request");
-            double fps = 0;
-            if (!RebuildAndMeasure(active, "candidate", &fps)) return false;
-            double hz = active.refreshHz > 0 ? active.refreshHz : 60.0;
-            if (fps >= 0.4 * hz) {
-                RLOG("HDMI: ACCEPTED %s: %.1f fps at %.3f Hz (%.0f%%)", renpyuwp::display::CandidateLabel(i), fps, hz,
-                     100.0 * fps / hz);
-                m_activeMode = active;
-                return true;
-            }
-            RLOG("HDMI: REJECTED %s: mode was set but only %.1f fps reached the display at %.3f Hz "
-                 "(no vsync: output pipeline/link not running in this mode)",
-                 renpyuwp::display::CandidateLabel(i), fps, hz);
+        renpyuwp::display::Mode active;
+        t.set = renpyuwp::display::RequestCandidate(t.candidate, pump, active);
+        if (!t.set) return true;
+        t.hz = active.refreshHz > 0 ? active.refreshHz : 60.0;
+        renpyuwp::display::Mode sc{t.sw, t.sh, active.refreshHz};
+        char what[96];
+        snprintf(what, sizeof(what), "trial output %ux%u", active.width, active.height);
+        if (!RebuildAndMeasure(sc, what, &t.fps)) return false;
+        RLOG("HDMI: TRIAL %s, swapchain %ux%u -> %.1f fps (%.0f%% of %.3f Hz)%s",
+             renpyuwp::display::CandidateLabel(t.candidate), t.sw, t.sh, t.fps, 100.0 * t.fps / t.hz, t.hz,
+             m_renderer.DeviceRemovedReason() ? " [D3D DEVICE REMOVED]" : "");
+        return true;
+    }
+
+    bool TryBestMode() {
+        Trial trials[] = {
+            {2, 3840, 2160}, {2, 2560, 1440},                    // 4K60 output
+            {0, 2560, 1440}, {0, 1920, 1080}, {0, 3840, 2160},  // 4K120 output
+        };
+        for (auto& t : trials) {
+            if (!RunTrial(t)) return false;
         }
-        RLOG("HDMI: no candidate mode is usable; going back to the default mode");
-        return RestoreDefaultAndMeasure();
+        RLOG("HDMI: SUMMARY (output mode / swapchain / fps):");
+        Trial* best = nullptr;
+        auto score = [](const Trial& t) {
+            bool full = t.fps >= 0.9 * t.hz;
+            return (full ? 1e9 : 0) + t.hz * 1e6 + static_cast<double>(t.sw) * t.sh;
+        };
+        for (auto& t : trials) {
+            bool ok = t.set && t.fps >= 0.9 * t.hz;
+            RLOG("HDMI:   %-28s swapchain %ux%u: %s", renpyuwp::display::CandidateLabel(t.candidate), t.sw, t.sh,
+                 !t.set ? "mode not settable" : (ok ? "OK full rate" : "FAILS (no/low vsync)"));
+            if (t.set) RLOG("HDMI:     %.1f fps of %.3f Hz", t.fps, t.hz);
+            if (ok && (!best || score(t) > score(*best))) best = &t;
+        }
+        if (!best) {
+            RLOG("HDMI: no combination runs at full rate; going back to the default mode");
+            return RestoreDefaultAndMeasure();
+        }
+        RLOG("HDMI: BEST = %s with swapchain %ux%u; applying it", renpyuwp::display::CandidateLabel(best->candidate),
+             best->sw, best->sh);
+        Trial final = *best;
+        if (!RunTrial(final)) return false;
+        if (!(final.set && final.fps >= 0.9 * final.hz)) {
+            RLOG("HDMI: best combination did not reproduce; going back to the default mode");
+            return RestoreDefaultAndMeasure();
+        }
+        RLOG("HDMI: FINAL %s, swapchain %ux%u, %.1f fps", renpyuwp::display::CandidateLabel(final.candidate), final.sw,
+             final.sh, final.fps);
+        m_activeMode = renpyuwp::display::Current();
+        return true;
     }
 
     bool RestoreDefaultAndMeasure() {
