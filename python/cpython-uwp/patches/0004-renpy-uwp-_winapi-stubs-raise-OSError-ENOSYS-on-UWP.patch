@@ -1,0 +1,116 @@
+From 6ccd3fb1f32923b2b784557eccd1ee5e83af94f5 Mon Sep 17 00:00:00 2001
+From: renpy-uwp <renpy-uwp@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 17:55:46 -0500
+Subject: [PATCH 4/5] renpy-uwp: _winapi stubs raise OSError(ENOSYS) on UWP
+
+CreateProcess, CreateJunction and GetShortPathName are in the method table again
+and raise OSError instead of returning NotImplemented or being missing.
+---
+ Modules/_winapi.c | 42 +++++++++++++++++++++++++++++++++++-------
+ 1 file changed, 35 insertions(+), 7 deletions(-)
+
+diff --git a/Modules/_winapi.c b/Modules/_winapi.c
+index 7c8b857..08dac87 100644
+--- a/Modules/_winapi.c
++++ b/Modules/_winapi.c
+@@ -525,13 +525,30 @@ _winapi.CreateJunction
+     /
+ [clinic start generated code]*/
+ 
++#ifndef MS_WINDOWS_DESKTOP
++/* renpy-uwp: functions that cannot work inside a UWP app container raise OSError
++   (errno ENOSYS) instead of returning NotImplemented, so callers such as
++   subprocess fail where they should. */
++static PyObject *
++winapi_uwp_unsupported(const char *name)
++{
++    PyObject *args = Py_BuildValue("(is)", ENOSYS,
++        name ? name : "function not available in a UWP app container");
++    if (args != NULL) {
++        PyErr_SetObject(PyExc_OSError, args);
++        Py_DECREF(args);
++    }
++    return NULL;
++}
++#endif
++
+ static PyObject *
+ _winapi_CreateJunction_impl(PyObject *module, LPCWSTR src_path,
+                             LPCWSTR dst_path)
+ /*[clinic end generated code: output=44b3f5e9bbcc4271 input=963d29b44b9384a7]*/
+ {
+ #ifdef MS_WINDOWS_APP
+-	Py_RETURN_NOTIMPLEMENTED;
++    return winapi_uwp_unsupported("_winapi.CreateJunction is not available in a UWP app container");
+ #else
+     /* Privilege adjustment */
+     HANDLE token = NULL;
+@@ -1555,7 +1572,7 @@ _winapi_GetShortPathName_impl(PyObject *module, LPCWSTR path)
+ /*[clinic end generated code: output=dab6ae494c621e81 input=43fa349aaf2ac718]*/
+ {
+ #ifdef MS_WINDOWS_APP
+-    Py_RETURN_NOTIMPLEMENTED;
++    return winapi_uwp_unsupported("_winapi.GetShortPathName is not available in a UWP app container");
+ #else
+     DWORD cchBuffer;
+     PyObject *result = NULL;
+@@ -2265,7 +2282,7 @@ _winapi__mimetypes_read_windows_registry_impl(PyObject *module,
+ /*[clinic end generated code: output=20829f00bebce55b input=cd357896d6501f68]*/
+ {
+ #ifdef MS_WINDOWS_APP
+-	Py_RETURN_NOTIMPLEMENTED;
++    return winapi_uwp_unsupported("_winapi._mimetypes_read_windows_registry is not available in a UWP app container");
+ #else
+ #define CCH_EXT 128
+ #define CB_TYPE 510
+@@ -2445,6 +2462,14 @@ _winapi_CopyFile2_impl(PyObject *module, LPCWSTR existing_file_name,
+ }
+ 
+ 
++#ifndef MS_WINDOWS_DESKTOP
++static PyObject *
++winapi_CreateProcess_uwp(PyObject *module, PyObject *const *args, Py_ssize_t nargs)
++{
++    return winapi_uwp_unsupported("_winapi.CreateProcess: child processes are not available in a UWP app container");
++}
++#endif
++
+ static PyMethodDef winapi_functions[] = {
+     _WINAPI_CLOSEHANDLE_METHODDEF
+     _WINAPI_CONNECTNAMEDPIPE_METHODDEF
+@@ -2454,8 +2479,10 @@ static PyMethodDef winapi_functions[] = {
+     _WINAPI_CREATEPIPE_METHODDEF
+ #ifdef MS_WINDOWS_DESKTOP
+     _WINAPI_CREATEPROCESS_METHODDEF
+-    _WINAPI_CREATEJUNCTION_METHODDEF
++#else
++    {"CreateProcess", _PyCFunction_CAST(winapi_CreateProcess_uwp), METH_FASTCALL, NULL},
+ #endif
++    _WINAPI_CREATEJUNCTION_METHODDEF
+     _WINAPI_DUPLICATEHANDLE_METHODDEF
+     _WINAPI_EXITPROCESS_METHODDEF
+     _WINAPI_GETCURRENTPROCESS_METHODDEF
+@@ -2463,9 +2490,7 @@ static PyMethodDef winapi_functions[] = {
+     _WINAPI_GETLASTERROR_METHODDEF
+     _WINAPI_GETLONGPATHNAME_METHODDEF
+     _WINAPI_GETMODULEFILENAME_METHODDEF
+-#ifdef MS_WINDOWS_DESKTOP
+     _WINAPI_GETSHORTPATHNAME_METHODDEF
+-#endif
+     _WINAPI_GETSTDHANDLE_METHODDEF
+     _WINAPI_GETVERSION_METHODDEF
+     _WINAPI_MAPVIEWOFFILE_METHODDEF
+@@ -2485,9 +2510,12 @@ static PyMethodDef winapi_functions[] = {
+     _WINAPI_GETACP_METHODDEF
+     _WINAPI_GETFILETYPE_METHODDEF
+ #ifdef MS_WINDOWS_DESKTOP
++    /* Absent on APP on purpose: mimetypes.init() would not catch an OSError from it;
++       without it mimetypes falls back cleanly. */
+     _WINAPI__MIMETYPES_READ_WINDOWS_REGISTRY_METHODDEF
+-    _WINAPI_NEEDCURRENTDIRECTORYFOREXEPATH_METHODDEF
+ #endif
++    /* A query used by shutil.which(): on APP it answers FALSE. */
++    _WINAPI_NEEDCURRENTDIRECTORYFOREXEPATH_METHODDEF
+     _WINAPI_COPYFILE2_METHODDEF
+     {NULL, NULL}
+ };

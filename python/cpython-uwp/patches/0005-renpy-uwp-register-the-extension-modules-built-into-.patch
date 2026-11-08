@@ -1,0 +1,54 @@
+From 330f9e0c181256578f495de16d39f7965eb83675 Mon Sep 17 00:00:00 2001
+From: renpy-uwp <renpy-uwp@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 17:55:46 -0500
+Subject: [PATCH 5/5] renpy-uwp: register the extension modules built into the
+ static library
+
+---
+ PC/config.c | 26 ++++++++++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+diff --git a/PC/config.c b/PC/config.c
+index ecbd00b..3e64f5f 100644
+--- a/PC/config.c
++++ b/PC/config.c
+@@ -77,6 +77,19 @@ extern PyObject* PyInit__opcode(void);
+ extern PyObject* PyInit__contextvars(void);
+ extern PyObject* PyInit__tokenize(void);
+ 
++/* renpy-uwp: extension modules built into the static library (see python/cpython-uwp) */
++extern PyObject* PyInit__asyncio(void);
++extern PyObject* PyInit__queue(void);
++extern PyObject* PyInit_select(void);
++extern PyObject* PyInit_unicodedata(void);
++extern PyObject* PyInit__socket(void);
++extern PyObject* PyInit_pyexpat(void);
++extern PyObject* PyInit__elementtree(void);
++extern PyObject* PyInit__decimal(void);
++extern PyObject* PyInit__overlapped(void);
++extern PyObject* PyInit__multiprocessing(void);
++extern PyObject* PyInit__zoneinfo(void);
++
+ /* tools/freeze/makeconfig.py marker for additional "extern" */
+ /* -- ADDMODULE MARKER 1 -- */
+ 
+@@ -153,6 +166,19 @@ struct _inittab _PyImport_Inittab[] = {
+     {"_codecs_kr", PyInit__codecs_kr},
+     {"_codecs_tw", PyInit__codecs_tw},
+ 
++    /* renpy-uwp built-ins */
++    {"_asyncio", PyInit__asyncio},
++    {"_queue", PyInit__queue},
++    {"select", PyInit_select},
++    {"unicodedata", PyInit_unicodedata},
++    {"_socket", PyInit__socket},
++    {"pyexpat", PyInit_pyexpat},
++    {"_elementtree", PyInit__elementtree},
++    {"_decimal", PyInit__decimal},
++    {"_overlapped", PyInit__overlapped},
++    {"_multiprocessing", PyInit__multiprocessing},
++    {"_zoneinfo", PyInit__zoneinfo},
++
+ /* tools/freeze/makeconfig.py marker for additional "_inittab" entries */
+ /* -- ADDMODULE MARKER 2 -- */
+ 

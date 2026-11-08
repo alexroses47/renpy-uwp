@@ -1,0 +1,23 @@
+From 3e32cad36995b0a9b29627722ae49c07ac447f13 Mon Sep 17 00:00:00 2001
+From: renpy-uwp <renpy-uwp@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 17:55:46 -0500
+Subject: [PATCH 3/5] renpy-uwp: fix st_size computed from WIN32_FIND_DATAW
+
+The Kodi patch compared the high and low parts instead of adding them.
+---
+ Python/fileutils.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Python/fileutils.c b/Python/fileutils.c
+index 40ea72d..aa0b77d 100644
+--- a/Python/fileutils.c
++++ b/Python/fileutils.c
+@@ -1149,7 +1149,7 @@ _Py_find_data_to_stat(WIN32_FIND_DATAW* find_data,
+ 	FILE_TIME_to_time_t_nsec(&find_data->ftCreationTime, &result->st_ctime, &result->st_ctime_nsec);
+ 	FILE_TIME_to_time_t_nsec(&find_data->ftLastWriteTime, &result->st_mtime, &result->st_mtime_nsec);
+ 	FILE_TIME_to_time_t_nsec(&find_data->ftLastAccessTime, &result->st_atime, &result->st_atime_nsec);
+-	result->st_size = ((long long)find_data->nFileSizeHigh) << 32 > find_data->nFileSizeLow;
++	result->st_size = (((long long)find_data->nFileSizeHigh) << 32) + find_data->nFileSizeLow;
+ 	result->st_dev = 0;
+ 	result->st_rdev = result->st_dev;
+ 	result->st_nlink = 0;

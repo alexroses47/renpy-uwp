@@ -1,0 +1,66 @@
+From 74474bb074ef1c360029d44f9a8d61d2b597afd2 Mon Sep 17 00:00:00 2001
+From: renpy-uwp <renpy-uwp@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 17:55:46 -0500
+Subject: [PATCH 1/5] renpy-uwp: CreateFile2 shim converts only install-folder
+ paths to relative
+
+Replace the Kodi-specific "system" substring search with a prefix match on the
+executable folder, as in python/cpython#153021.
+---
+ Include/internal/pycore_fileutils_windows.h | 35 ++++++++++++++++++---
+ 1 file changed, 31 insertions(+), 4 deletions(-)
+
+diff --git a/Include/internal/pycore_fileutils_windows.h b/Include/internal/pycore_fileutils_windows.h
+index 13e9446..97932b2 100644
+--- a/Include/internal/pycore_fileutils_windows.h
++++ b/Include/internal/pycore_fileutils_windows.h
+@@ -97,6 +97,33 @@ static inline BOOL _Py_GetFileInformationByName_ErrorIsTrustworthy(int error)
+     return FALSE;
+ }
+ 
++#ifdef MS_WINDOWS_APP
++/* renpy-uwp (based on python/cpython#153021 and #152797): an app container rejects absolute
++   paths inside the package install folder for CreateFile2/LoadPackagedLibrary, so such paths
++   are turned into paths relative to the executable folder (the process working directory).
++   Paths elsewhere (LocalState, removable drives such as E:\) are passed through unchanged.
++   Unlike the Kodi version this does not search for a "system" substring anywhere in the path:
++   only a case-insensitive prefix match on the executable folder is converted. */
++static inline const wchar_t* _Py_AbsolutePath_To_RelativePath(const wchar_t* abs_path)
++{
++    wchar_t exe_dir[MAX_PATH + 1] = { 0 };
++    DWORD n = GetModuleFileNameW(NULL, exe_dir, MAX_PATH);
++    if (n == 0 || n >= MAX_PATH) {
++        return NULL;
++    }
++    wchar_t* sep = wcsrchr(exe_dir, L'\\');
++    if (sep == NULL) {
++        return NULL;
++    }
++    sep[1] = L'\0';
++    size_t len = wcslen(exe_dir);
++    if (_wcsnicmp(abs_path, exe_dir, len) == 0 && abs_path[len] != L'\0') {
++        return abs_path + len;
++    }
++    return NULL;
++}
++#endif
++
+ static inline HANDLE _Py_win_create_file(
+     _In_ LPCWSTR lpFileName,
+     _In_ DWORD dwDesiredAccess,
+@@ -119,11 +146,11 @@ static inline HANDLE _Py_win_create_file(
+     ext.dwFileAttributes = FILE_ATTRIBUTE_NORMAL;
+     ext.dwFileFlags = dwFlagsAndAttributes & flagsMask;
+ 
+-    // if path is absolute convert to base path
++    // Absolute path inside the install folder: use the relative path (see above).
+     if (wcschr(lpFileName, L':')) {
+-        wchar_t* base_path = wcsstr(lpFileName, L"system");
+-        if (base_path) {
+-            return CreateFile2(base_path, dwDesiredAccess, dwShareMode, dwCreationDisposition, &ext);
++        const wchar_t* rel_path = _Py_AbsolutePath_To_RelativePath(lpFileName);
++        if (rel_path) {
++            return CreateFile2(rel_path, dwDesiredAccess, dwShareMode, dwCreationDisposition, &ext);
+         }
+     }
+ 

@@ -1,0 +1,43 @@
+From f739cdba0ec0756cd21f11218371ec8bb45b4cab Mon Sep 17 00:00:00 2001
+From: renpy-uwp <renpy-uwp@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 17:55:46 -0500
+Subject: [PATCH 2/5] renpy-uwp: dynload_win uses install-relative paths for
+ LoadPackagedLibrary
+
+Replace the "system" substring search (python/cpython#152797).
+---
+ Python/dynload_win.c | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/Python/dynload_win.c b/Python/dynload_win.c
+index 74c2464..2b61275 100644
+--- a/Python/dynload_win.c
++++ b/Python/dynload_win.c
+@@ -4,6 +4,9 @@
+ #include "Python.h"
+ #include "pycore_fileutils.h"     // _Py_add_relfile()
+ #include "pycore_pystate.h"       // _PyInterpreterState_GET()
++#ifdef MS_WINDOWS_APP
++#include "pycore_fileutils_windows.h" // _Py_AbsolutePath_To_RelativePath()
++#endif
+ 
+ #ifdef HAVE_DIRECT_H
+ #include <direct.h>
+@@ -260,13 +263,10 @@ dl_funcptr _PyImport_FindSharedFuncptrWindows(const char *prefix,
+                               LOAD_LIBRARY_SEARCH_DEFAULT_DIRS |
+                               LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR);
+ #else
+-        // LoadPackagedLibrary doesn't accept absolute paths so use
+-        // the base path or DLL name
+-        wchar_t* base_path = wcsstr(wpathname, L"system");
+-        if (base_path)
+-            hDLL = LoadPackagedLibrary(base_path, 0);
+-        else
+-            hDLL = LoadPackagedLibrary(wpathname, 0);
++        // LoadPackagedLibrary doesn't accept absolute paths: use the path
++        // relative to the install folder (python/cpython#152797).
++        const wchar_t* rel_path = _Py_AbsolutePath_To_RelativePath(wpathname);
++        hDLL = LoadPackagedLibrary(rel_path ? rel_path : wpathname, 0);
+ #endif
+         Py_END_ALLOW_THREADS
+         PyMem_Free(wpathname);
