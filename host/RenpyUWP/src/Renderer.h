@@ -29,7 +29,7 @@ public:
     enum class FrameResult { Presented, Skipped, Error };
     // Waits (at most `waitMs`) for the swapchain to accept a frame, then clears and presents with vsync.
     // Skipped = the display did not release a buffer in time (no vsync), so nothing was presented.
-    FrameResult Frame(const float rgba[4], DWORD waitMs = 100);
+    FrameResult Frame(const float rgba[4], DWORD waitMs = 100, UINT syncInterval = 1);
     // Present count / refresh count from DXGI frame statistics, if available.
     bool FrameStatistics(uint32_t& presentCount, uint32_t& presentRefreshCount, uint32_t& syncRefreshCount);
 

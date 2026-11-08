@@ -8,6 +8,8 @@
 
 #include <fileapifromapp.h>
 
+#include <malloc.h>
+
 #include <algorithm>
 #include <atomic>
 #include <map>
@@ -206,13 +208,29 @@ void Walk(const std::wstring& dir, WalkStats& st, int depth) {
 }
 
 // Sequential read throughput of up to 64 MB of `path` (USB speed matters for .rpa archives and video).
+// FILE_FLAG_NO_BUFFERING bypasses the OS file cache (build 0.0.13 measured ~4 GB/s = cache hits).
 void MeasureRead(const std::wstring& path) {
-    HANDLE h = CreateFile2FromAppW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, nullptr);
+    CREATEFILE2_EXTENDED_PARAMETERS ep{};
+    ep.dwSize = sizeof(ep);
+    ep.dwFileAttributes = FILE_ATTRIBUTE_NORMAL;
+    ep.dwFileFlags = FILE_FLAG_NO_BUFFERING | FILE_FLAG_SEQUENTIAL_SCAN;
+    HANDLE h = CreateFile2FromAppW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, &ep);
     if (h == INVALID_HANDLE_VALUE) {
         RLOG("storage:     read test: cannot open %ls (error %lu)", path.c_str(), GetLastError());
         return;
     }
-    std::vector<char> buf(1 << 20);
+    // Start 256 MB into the file (if it is that big) to avoid data read by earlier runs.
+    LARGE_INTEGER size{}, pos{};
+    GetFileSizeEx(h, &size);
+    pos.QuadPart = size.QuadPart > (512ll << 20) ? (256ll << 20) : 0;
+    SetFilePointerEx(h, pos, nullptr, FILE_BEGIN);
+    // NO_BUFFERING needs sector-aligned buffers.
+    struct Buf {
+        char* p = static_cast<char*>(_aligned_malloc(1 << 20, 4096));
+        ~Buf() { _aligned_free(p); }
+        char* data() { return p; }
+        size_t size() const { return 1 << 20; }
+    } buf;
     uint64_t total = 0;
     LARGE_INTEGER f, t0, t1;
     QueryPerformanceFrequency(&f);

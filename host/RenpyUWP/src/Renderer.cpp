@@ -151,7 +151,7 @@ bool Renderer::CreateTargets() {
     return true;
 }
 
-Renderer::FrameResult Renderer::Frame(const float rgba[4], DWORD waitMs) {
+Renderer::FrameResult Renderer::Frame(const float rgba[4], DWORD waitMs, UINT syncInterval) {
     if (m_frameWait && WaitForSingleObjectEx(m_frameWait, waitMs, TRUE) != WAIT_OBJECT_0) {
         ++m_skipped;
         return FrameResult::Skipped;
@@ -159,7 +159,7 @@ Renderer::FrameResult Renderer::Frame(const float rgba[4], DWORD waitMs) {
     ID3D11RenderTargetView* rtvs[] = {m_rtv.get()};
     m_context->OMSetRenderTargets(1, rtvs, nullptr);
     m_context->ClearRenderTargetView(m_rtv.get(), rgba);
-    HRESULT hr = m_swapchain->Present(1, 0);
+    HRESULT hr = m_swapchain->Present(syncInterval, 0);
     if (hr == S_OK) {
         ++m_ok;
     } else if (hr == DXGI_STATUS_OCCLUDED) {

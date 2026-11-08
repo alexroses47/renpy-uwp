@@ -162,6 +162,7 @@ private:
     struct Trial {
         int candidate;
         uint32_t sw, sh;
+        UINT sync = 1;  // 0 = no vsync: diagnostic only, never selected as best
         double hz = 0, fps = 0;
         bool set = false;
     };
@@ -175,17 +176,24 @@ private:
         renpyuwp::display::Mode sc{t.sw, t.sh, active.refreshHz};
         char what[96];
         snprintf(what, sizeof(what), "trial output %ux%u", active.width, active.height);
-        if (!RebuildAndMeasure(sc, what, &t.fps)) return false;
-        RLOG("HDMI: TRIAL %s, swapchain %ux%u -> %.1f fps (%.0f%% of %.3f Hz)%s",
-             renpyuwp::display::CandidateLabel(t.candidate), t.sw, t.sh, t.fps, 100.0 * t.fps / t.hz, t.hz,
+        m_syncInterval = t.sync;
+        bool ok = RebuildAndMeasure(sc, what, &t.fps);
+        m_syncInterval = 1;
+        if (!ok) return false;
+        RLOG("HDMI: TRIAL %s, swapchain %ux%u, Present(%u) -> %.1f fps (%.0f%% of %.3f Hz)%s",
+             renpyuwp::display::CandidateLabel(t.candidate), t.sw, t.sh, t.sync, t.fps, 100.0 * t.fps / t.hz, t.hz,
              m_renderer.DeviceRemovedReason() ? " [D3D DEVICE REMOVED]" : "");
         return true;
     }
 
     bool TryBestMode() {
+        // 3840x2160 swapchains are left out: in build 0.0.13 they reset the GPU (DXGI_ERROR_DEVICE_RESET)
+        // at both 60 and 120 Hz. Larger-than-1440p sizes go last in each group.
         Trial trials[] = {
-            {2, 3840, 2160}, {2, 2560, 1440},                    // 4K60 output
-            {0, 2560, 1440}, {0, 1920, 1080}, {0, 3840, 2160},  // 4K120 output
+            {2, 2560, 1440},                                    // 4K60 output, control
+            {0, 2560, 1440}, {0, 2560, 1440, 0},                // 4K120: vsync vs no vsync
+            {3, 1920, 1080}, {3, 1920, 1080, 0},                // 1080p120 output
+            {2, 2880, 1620}, {2, 3200, 1800},                   // 4K60: largest swapchain that works?
         };
         for (auto& t : trials) {
             if (!RunTrial(t)) return false;
@@ -198,10 +206,10 @@ private:
         };
         for (auto& t : trials) {
             bool ok = t.set && t.fps >= 0.9 * t.hz;
-            RLOG("HDMI:   %-28s swapchain %ux%u: %s", renpyuwp::display::CandidateLabel(t.candidate), t.sw, t.sh,
-                 !t.set ? "mode not settable" : (ok ? "OK full rate" : "FAILS (no/low vsync)"));
+            RLOG("HDMI:   %-28s swapchain %ux%u Present(%u): %s", renpyuwp::display::CandidateLabel(t.candidate), t.sw,
+                 t.sh, t.sync, !t.set ? "mode not settable" : (ok ? "OK full rate" : "below refresh rate"));
             if (t.set) RLOG("HDMI:     %.1f fps of %.3f Hz", t.fps, t.hz);
-            if (ok && (!best || score(t) > score(*best))) best = &t;
+            if (ok && t.sync == 1 && (!best || score(t) > score(*best))) best = &t;
         }
         if (!best) {
             RLOG("HDMI: no combination runs at full rate; going back to the default mode");
@@ -293,7 +301,7 @@ private:
     renpyuwp::Renderer::FrameResult Frame() {
         LARGE_INTEGER t0, t1;
         QueryPerformanceCounter(&t0);
-        auto r = m_renderer.Frame(kColors[m_color]);
+        auto r = m_renderer.Frame(kColors[m_color], 100, m_syncInterval);
         QueryPerformanceCounter(&t1);
         m_presentTicks += t1.QuadPart - t0.QuadPart;
         if (r == renpyuwp::Renderer::FrameResult::Presented) m_meter.Tick();
@@ -462,6 +470,7 @@ private:
     LONGLONG m_presentTicks = 0;
     int m_color = 0;
     int m_pendingAction = 0;
+    UINT m_syncInterval = 1;
     renpyuwp::display::Mode m_activeMode;
     bool m_haveHdmi = false;
     bool m_running = true;
