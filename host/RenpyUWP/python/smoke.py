@@ -129,7 +129,11 @@ def main():
     failures += not check("hashlib sha256", lambda: hashlib.sha256(b"renpy").hexdigest()[:16])
     import pickle
     failures += not check("pickle deep", lambda: len(pickle.loads(pickle.dumps(nested(400)))))
-    failures += not check("recursion depth 3000", lambda: recurse(3000))
+    # Ren'Py keeps the default recursion limit (1000; it never calls sys.setrecursionlimit).
+    failures += not check("recursion 900 (default limit)", lambda: recurse(900))
+    failures += not check("recursion 15000 (limit 20000, 8 MB thread)", lambda: deep_recursion(15000))
+    failures += not check("C recursion: json/pickle depth 1400",
+                          lambda: (len(json.dumps(nested(1400))), len(pickle.dumps(nested(1400)))))
     import unicodedata
     failures += not check("unicodedata", lambda: unicodedata.name("ñ"))
 
@@ -221,6 +225,15 @@ def nested(depth):
 
 def recurse(n):
     return 0 if n == 0 else 1 + recurse(n - 1)
+
+
+def deep_recursion(n):
+    old = sys.getrecursionlimit()
+    sys.setrecursionlimit(20000)
+    try:
+        return recurse(n)
+    finally:
+        sys.setrecursionlimit(old)
 
 
 def expect_oserror(fn):
