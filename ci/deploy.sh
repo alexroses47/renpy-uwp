@@ -120,11 +120,20 @@ fi
 
 # --- 6. Launch ---------------------------------------------------------------
 if [[ $start -eq 1 ]]; then
-    dp_info "Launching $APP_ID"
-    if [[ -n "$openappx_bin" ]] && oa --start "$pfn" --app-id "$APP_ID"; then
-        :
-    else
-        dp_rest_start "$pfn" "$APP_ID"
-    fi
+    # Right after a (re)install the console may still be registering the package and refuse
+    # the launch (observed: HTTP 400, 0x80270300), so retry a few times.
+    launched=0
+    for attempt in 1 2 3 4 5; do
+        sleep 5
+        dp_info "Launching $APP_ID (attempt $attempt)"
+        if [[ -n "$openappx_bin" ]]; then
+            oa --start "$pfn" --app-id "$APP_ID" && launched=1
+        else
+            dp_rest_start "$pfn" "$APP_ID" && launched=1
+        fi
+        [[ $launched -eq 1 ]] && break
+    done
+    [[ $launched -eq 1 ]] || dp_die "could not launch the app; start it from Dev Home"
+
 fi
 dp_info "Done. Fetch the log with: ci/fetch-logs.sh"

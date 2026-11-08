@@ -84,7 +84,8 @@ dp_package_full_name() {
 import json, sys
 name = sys.argv[1]
 pkgs = json.load(sys.stdin).get("InstalledPackages", [])
-match = [p for p in pkgs if p.get("Name") == name]
+# On Xbox, "Name" holds the display name, so match on the identity prefix of the full name.
+match = [p for p in pkgs if p.get("PackageFullName", "").split("_")[0] == name]
 if match:
     print(match[0]["PackageFullName"])
 ' "$name"

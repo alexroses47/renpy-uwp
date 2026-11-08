@@ -62,7 +62,7 @@ mkdir -p "$ROOT/logs"
 stamp="$(date +%Y%m%d-%H%M%S)"
 dest="$ROOT/logs/${file%.*}-$stamp.${file##*.}"
 for p in "${path_variants[@]}"; do
-    if dp_curl --fail -G -o "$dest" "$DP_URL/api/filesystem/apps/file" \
+    if dp_curl --fail-with-body -G -o "$dest" "$DP_URL/api/filesystem/apps/file" \
         --data-urlencode "knownfolderid=LocalAppData" \
         --data-urlencode "packagefullname=$pfn" \
         --data-urlencode "path=$p" \
@@ -72,6 +72,7 @@ for p in "${path_variants[@]}"; do
         [[ $quiet -eq 1 ]] || cat "$dest"
         exit 0
     fi
+    [[ -s "$dest" ]] && dp_info "path '$p': $(head -c 300 "$dest")"
 done
 rm -f "$dest"
 
