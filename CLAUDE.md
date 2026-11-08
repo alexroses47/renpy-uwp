@@ -17,6 +17,7 @@ Si el Hito 2 resulta inviable, detente y propón el plan B (contenedor UWP con W
 - Toda compilación para Windows/UWP se hace en **GitHub Actions** (`runs-on: windows-2022`, fijado; no `windows-latest`).
 - El usuario controla CI desde la terminal con la CLI `gh` (`gh workflow run`, `gh run watch`, `gh run view --log-failed`,
   `gh run download`).
+- TV: **Samsung S90D** conectada por **HDMI 2.1**.
 - Consola: Xbox Series S, Dev Mode, devkit type "Universal Windows App Devkit", OS 10.0.26100.x, sandbox XDKS.1.
 - Device Portal: `https://192.168.100.102:11443`. Credenciales del Device Portal en variables de entorno
   (`XBOX_DP_USER`, `XBOX_DP_PASS`), **nunca** en el repo ni en logs.
@@ -59,6 +60,10 @@ App UWP (host C++/WinRT, CoreApplication)
      ├─ Juego: carpeta en el USB (p. ej. E:\renpy\<juego>\game) o LocalState como alternativa
      └─ Partidas y persistentes: LocalState (config.savedir)
 ```
+
+Requisito de salida de vídeo: **el objetivo final es 3840x2160 (4K) a 120 Hz** en la Samsung S90D (HDMI 2.1).
+El host debe pedir ese modo con `HdmiDisplayInformation` y crear el swapchain a la resolución real. Si la consola,
+la API o la configuración lo impiden, documentar qué lo limita exactamente y usar el mejor modo alcanzable.
 
 Restricciones UWP que hay que asumir y verificar:
 - Sandbox AppContainer: acceso a disco limitado al paquete (solo lectura), LocalState/LocalCache/TempState
@@ -128,8 +133,10 @@ Restricciones UWP que hay que asumir y verificar:
 
 ### Hito 5 — KS:RE jugable
 - Cargar KS:RE desde el USB; partidas en LocalState; videos (FFmpeg); fuentes; mando; tipo Game.
-- Resolución real 1440p/4K (swapchain al tamaño HDMI). Medir memoria con el Device Portal (Performance).
-- **Aceptación:** se puede jugar el Acto 1 completo, guardar, salir, volver y cargar.
+- Resolución real: objetivo **3840x2160 a 120 Hz** (swapchain al tamaño HDMI, modo pedido con `HdmiDisplayInformation`);
+  si no es alcanzable, el mejor modo posible con la limitación documentada. Medir memoria con el Device Portal (Performance).
+- **Aceptación:** se puede jugar el Acto 1 completo, guardar, salir, volver y cargar, con la salida en 3840x2160 a 120 Hz
+  (o en el mejor modo alcanzable documentado en `docs/RESEARCH.md`) y los fps reales registrados en el log.
 
 ## Flujo de trabajo en cada sesión
 
