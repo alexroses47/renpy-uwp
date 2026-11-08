@@ -27,7 +27,11 @@ fi
 
 hook="$game_dir/game/zz_renpy_uwp_module_dump.rpy"
 raw="${out%.json}.raw.json"
-cleanup() { rm -f "$hook" "${hook}c" "${hook%.rpy}.rpyc"; }
+cleanup() {
+    rm -f "$hook" "${hook}c" "${hook%.rpy}.rpyc"
+    # Ren'Py (developer mode) keeps copies of compiled .rpy files in ~/.renpy/backups/<game>/.
+    rm -f "$HOME"/.renpy/backups/*/zz_renpy_uwp_module_dump.*.rpy 2>/dev/null || true
+}
 trap cleanup EXIT
 
 cat >"$hook" <<'RPY'
