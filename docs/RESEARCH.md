@@ -245,3 +245,80 @@ Xbox Series S, OS **10.0.26100.9647**, Device Portal en `https://192.168.100.102
   swapchain de **8×8**: hay que pasar el tamaño explícito.
 - D3D11: nivel de funciones **11.0** (`0xb000`) en modo App, como indicaba Walbourn. El adaptador se llama
   `SraKmd_arden` y reporta 128 MB de memoria de vídeo dedicada.
+
+---
+
+# Hito 1 — SDL2 + mando + pruebas de USB y HDMI (investigación 2026-11-08)
+
+## 11. SDL2 para UWP
+
+- Versión: **SDL2 2.0.20**, tarball oficial `https://github.com/libsdl-org/SDL/releases/download/release-2.0.20/SDL2-2.0.20.tar.gz`,
+  SHA-256 `c56aba1d7b5b0e7e999e4a7698c70b63a3394ff9704b5f6e1c57e0c16f04dd06` — **idéntico** al
+  `source/SDL2-2.0.20.tar.gz` de renpy-build (mismo hash; `SDL_revision.h` = `b424665e`, tag `release-2.0.20`).
+- Parches de Ren'Py (`patches/SDL2-2.0.20/series`): ninguno afecta al backend WinRT. `fix-windows_gaming_input.diff`
+  es solo para cabeceras MinGW; `dinput-non-exclusive`, `missing-usb-name-crash` tocan DirectInput/RawInput/HIDAPI
+  (escritorio); el resto es Android/iOS/mac/X11. **No se aplica ninguno** en UWP.
+- Proyecto: **`VisualC-WinRT/SDL-UWP.vcxproj`** (DLL, C++/CX `/ZW`, usa `include/SDL_config_winrt.h`: joystick
+  **WGI + XInput**, audio WASAPI, render D3D11). Se compila con overrides de MSBuild: `PlatformToolset=v143`,
+  `WindowsTargetPlatformVersion=10.0.22621.0`, `TargetName=SDL2`. Descartado CMake `WindowsStore` en 2.0.20: genera
+  su propio `SDL_config.h` y la detección de WGI/XInput depende de `check_include_file`, menos probado que el vcxproj.
+- Arranque: `SDL_WinRTRunApp(main, NULL)` (como 2ship). SDL crea el `IFrameworkView` y ejecuta `main` en el hilo de
+  UI de la CoreWindow (por eso las APIs `GetForCurrentView()` funcionan ahí, pero no se puede bloquear con `.get()`
+  en operaciones async: hay que sondear `Status()` mientras se bombean eventos).
+- Botón B: en Xbox es "atrás" del sistema. `SDL_HINT_WINRT_HANDLE_BACK_BUTTON=1` lo marca como manejado.
+- En el Hito 1 SDL solo gestiona ventana, eventos y mando. Dibujamos con nuestro swapchain D3D11 sobre la CoreWindow
+  de SDL (`SDL_GetWindowWMInfo` → `info.winrt.window`) para controlar su tamaño (4K). Mismo patrón que hará falta
+  con ANGLE (superficie EGL con tamaño explícito).
+- Licencia: zlib. Se redistribuye `SDL2.dll` en el paquete.
+
+## 12. USB en Xbox Dev Mode
+
+Fuentes: [sternserv — Xbox Developer Mode Setup](https://wiki.sternserv.xyz/docs/xbox-setup/xbox-developer-mode-setup),
+[sternserv — RetroArch guide](https://wiki.sternserv.xyz/docs/emulation/retroarch-guide),
+[sternserv — Copying games from Linux to NTFS](https://wiki.sternserv.xyz/docs/xbox-setup/copying-games-from-linux),
+[Microsoft — File access permissions](https://learn.microsoft.com/en-us/windows/apps/develop/files/file-access-permissions).
+
+- Comunidad: el USB **debe ser NTFS** con la entrada **ALL APPLICATION PACKAGES = Control total** en el ACL; en la
+  consola se configura como **"Media"** (no "Games & apps", que lo formatearía). Aparece como **`E:\`**.
+- Desde Linux: archivos copiados con ntfs-3g no heredan ese ACL; sternserv da el descriptor a escribir con
+  `setfattr -n system.ntfs_acl`. Decodificado: owner/group Administrators, DACL con 2 ACE de acceso total
+  (`0x001f01ff`): **Everyone (S-1-1-0)** y **ALL APPLICATION PACKAGES (S-1-15-2-1)**; flags de herencia `0x03`
+  (OI|CI) en carpetas, `0x00` en archivos.
+- exFAT/FAT32: ninguna fuente lo menciona para Dev Mode. exFAT no tiene ACL; **no confirmado** si la AppContainer
+  puede acceder. Se prueba más adelante si hace falta (el plan original del proyecto decía exFAT: queda pendiente).
+- Microsoft dice que `broadFileSystemAccess` "no está soportado en Xbox" (doc genérica, para la Store). En Dev Mode
+  2ship y RetroArch lo declaran y acceden a `E:\` con Win32 (`std::filesystem` / `*FromAppW`). `removableStorage`
+  da acceso vía `KnownFolders.RemovableDevices` solo para tipos de archivo declarados en `FileTypeAssociation`.
+- Prueba del Hito 1 (registrada en el log): letras con `GetLogicalDrives`/`GetDriveTypeW`, volumen
+  (`GetVolumeInformationW`), listado de la raíz con `FindFirstFileExFromAppW` **y** con `FindFirstFileExW` normal,
+  lectura de `renpy-uwp-test.txt` con `CreateFile2FromAppW`, `CreateFile2`/`CreateFileW` y `_wfopen` (CRT), y
+  `KnownFolders::RemovableDevices`. Así sabremos si CPython sin parches (usa `CreateFileW`/`FindFirstFileW`) llega al USB.
+  Declaramos `FileTypeAssociation` para `.txt`, `.rpa`, `.rpy`, `.rpyc` para que `RemovableDevices` también vea esos archivos.
+
+## 13. Salida HDMI: 4K y 120 Hz
+
+API: [`Windows.Graphics.Display.Core.HdmiDisplayInformation`](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.display.core.hdmidisplayinformation)
+(desde 10.0.15063, UniversalApiContract v4): `GetForCurrentView()`, `GetSupportedDisplayModes()` →
+`IVectorView<HdmiDisplayMode>`, `GetCurrentDisplayMode()`, `RequestSetCurrentDisplayModeAsync(mode[, HdmiDisplayHdrOption[, metadata]])`
+→ `IAsyncOperation<bool>`, `SetDefaultDisplayModeAsync()`, evento `DisplayModesChanged`.
+`HdmiDisplayMode`: `ResolutionWidthInRawPixels`, `ResolutionHeightInRawPixels`, `RefreshRate` (double, Hz),
+`BitsPerPixel`, `ColorSpace` (`RgbLimited/RgbFull/BT2020/BT709`), `PixelEncoding` (`Rgb444/Ycc444/Ycc422/Ycc420`),
+`StereoEnabled`, `IsSmpte2084Supported`, `Is2086MetadataSupported`, `IsSdrLuminanceSupported`,
+`IsDolbyVisionLowLatencySupported`, `IsEqual()`. `HdmiDisplayHdrOption`: `None/EotfSdr/Eotf2084/DolbyVisionLowLatency`.
+La doc no dice si hace falta una capacidad, ni si el modo se revierte al salir (se llama a `SetDefaultDisplayModeAsync`
+al suspender por si acaso).
+
+- Series S y 4K a 120 Hz: solo hay fuentes secundarias ([Windows Report](https://windowsreport.com/xbox-series-s-4k/),
+  [How-To Geek](https://www.howtogeek.com/700984/how-to-enable-120hz-on-xbox-series-x-and-s/)) que dicen que la Series S
+  puede **sacar** 4K a 120 Hz (escalado; los juegos renderizan a 1440p), con cable/puerto HDMI 2.1 y "Allow 120 Hz"
+  activado en *TV & display options → Video modes*. La página oficial de soporte de Xbox no se pudo leer (se renderiza en
+  cliente). **No confirmado** → se mide en la consola.
+- Walbourn: en Series S el render recomendado es 1440p; la consola escala el swapchain a la salida.
+- Plan de prueba en el host: registrar todos los modos; pedir en orden 3840×2160@~120, 2560×1440@~120,
+  3840×2160@~60, 1920×1080@~120; registrar el resultado de cada petición y el modo final; crear el swapchain al tamaño
+  del modo real (no al de la CoreWindow, que sigue en 1920×1080 DIPs) y medir fps (QPC) durante 5 s con `Present(1,0)`.
+  Si un modo no aparece en la lista, el límite está en la negociación consola/TV/cable/ajustes; si aparece pero la
+  petición devuelve `false`, el límite es de la API/política (p. ej. App vs Game). `MemoryManager::AppMemoryUsageLimit`
+  se registra para saber si la app corre como App (~1 GB) o Game (~5 GB).
+- TV Samsung S90D: el puerto HDMI usado debe tener **Input Signal Plus** activado para aceptar 4K a 120 Hz (ajuste de
+  Samsung por puerto). Pendiente de confirmar por el usuario.
