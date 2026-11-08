@@ -15,6 +15,7 @@
 #include <winrt/Windows.ApplicationModel.Core.h>
 #include <winrt/Windows.ApplicationModel.h>
 #include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Storage.h>
 #include <winrt/Windows.System.Profile.h>
 #include <winrt/Windows.System.h>
 #include <winrt/Windows.UI.Core.h>
@@ -25,13 +26,14 @@
 #include <SDL_syswm.h>
 
 #include "DisplayProbe.h"
+#include "PythonHost.h"
 #include "Log.h"
 #include "Renderer.h"
 #include "StorageProbe.h"
 
 namespace {
 
-constexpr char kHostVersion[] = "milestone-1";
+constexpr char kHostVersion[] = "milestone-2";
 
 const float kColors[][4] = {
     {0.00f, 0.35f, 0.40f, 1.0f},  // teal (milestone 0 color)
@@ -134,6 +136,16 @@ public:
         Measure(3.0, "baseline (initial output mode)");
 
         if (haveHdmi && !ApplyPolicy()) return 1;
+
+        // Milestone 2: embedded CPython smoke test on its own 8 MB thread (log: LocalState\python.log).
+        try {
+            std::wstring localState = winrt::Windows::Storage::ApplicationData::Current().LocalFolder().Path().c_str();
+            std::wstring install =
+                winrt::Windows::ApplicationModel::Package::Current().InstalledLocation().Path().c_str();
+            renpyuwp::python::StartAsync(localState, install);
+        } catch (...) {
+            RLOG("python: cannot resolve LocalState/install paths");
+        }
 
         RLOG("entering main loop (A/B: color, X: fps+vram report, Y: storage probe, View: system HDMI mode, "
              "Menu: re-apply 4K120/1440p, RB: diagnostic mode matrix)");

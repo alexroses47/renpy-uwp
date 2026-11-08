@@ -49,6 +49,8 @@
   <PropertyGroup>
     <!-- SDL2 install prefix produced by deps/sdl2/build.ps1 (CI passes /p:SdlDir=...). -->
     <SdlDir Condition="'$(SdlDir)'==''">$(MSBuildThisFileDirectory)..\..\out\deps\sdl2</SdlDir>
+    <!-- CPython install prefix produced by python/cpython-uwp/build.ps1 (CI passes /p:PythonDir=...). -->
+    <PythonDir Condition="'$(PythonDir)'==''">$(MSBuildThisFileDirectory)..\..\out\deps\cpython</PythonDir>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -71,16 +73,18 @@
       <WarningLevel>Level4</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <AdditionalOptions>/bigobj /utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <PreprocessorDefinitions>NOMINMAX;WIN32_LEAN_AND_MEAN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NOMINMAX;WIN32_LEAN_AND_MEAN;Py_NO_ENABLE_SHARED;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <!-- C++/WinRT projection headers shipped with the Windows SDK (no NuGet needed). -->
-      <AdditionalIncludeDirectories>$(SdlDir)\include\SDL2;$(WindowsSdkDir)Include\$(WindowsTargetPlatformVersion)\cppwinrt;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(PythonDir)\include;$(SdlDir)\include\SDL2;$(WindowsSdkDir)Include\$(WindowsTargetPlatformVersion)\cppwinrt;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateWindowsMetadata>false</GenerateWindowsMetadata>
-      <AdditionalLibraryDirectories>$(SdlDir)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>SDL2.lib;WindowsApp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(PythonDir)\lib;$(SdlDir)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <!-- Strict mode: only WindowsApp.lib for system APIs (anything else must be justified in RESEARCH.md). -->
+      <AdditionalDependencies>python312.lib;zlibstatic.lib;SDL2.lib;WindowsApp.lib</AdditionalDependencies>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
@@ -108,16 +112,25 @@
     <ClCompile Include="src\Renderer.cpp" />
     <ClCompile Include="src\DisplayProbe.cpp" />
     <ClCompile Include="src\StorageProbe.cpp" />
+    <ClCompile Include="src\PythonHost.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Log.h" />
     <ClInclude Include="src\Renderer.h" />
     <ClInclude Include="src\DisplayProbe.h" />
     <ClInclude Include="src\StorageProbe.h" />
+    <ClInclude Include="src\PythonHost.h" />
   </ItemGroup>
   <ItemGroup>
     <!-- Copied next to the project by CI (git-ignored); packaged at the package root. -->
     <None Include="SDL2.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <!-- Embedded Python: stdlib zip copied here by CI (git-ignored) and the smoke test. -->
+    <None Include="python\python312.zip">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="python\smoke.py">
       <DeploymentContent>true</DeploymentContent>
     </None>
   </ItemGroup>
