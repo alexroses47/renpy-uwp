@@ -391,3 +391,11 @@ Conclusiones:
 5. La pantalla negra que vio el usuario era la GPU reiniciada por el swapchain 4K: el host 0.0.11 no se recuperaba de
    la pérdida del dispositivo y se quedaba bloqueado en `Present` (por eso View no respondía). Desde la 0.0.13 el host
    detecta `GetDeviceRemovedReason` y crea un dispositivo nuevo.
+
+## 16. Build estable 0.0.15 (2026-11-08)
+- `QueryVideoMemoryInfo`: **presupuesto local 3801 MB**, uso 19 MB (swapchain 1080p) / 32 MB (1440p). **La memoria de vídeo no
+  explica los reinicios de GPU** con swapchains > 1440p (los 128 MB "dedicados" del adaptador no son el límite). Causa probable,
+  no confirmada: límite del plano de presentación/escalador de la Series S para UWP.
+- Política por defecto (4K119.88 + 1440p): el modo se aplica bien, pero la primera medida dio 37.6 fps por una pausa única de ~1 s
+  tras el cambio (resincronización HDMI). Desde la 0.0.16, una medida baja se repite antes de retroceder; solo la pérdida de
+  dispositivo retrocede de inmediato a 1080p60.
