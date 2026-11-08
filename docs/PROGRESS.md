@@ -18,12 +18,17 @@
 - `ci/deploy.sh` (openappx, con respaldo curl/REST) y `ci/fetch-logs.sh` (REST con curl y pin de clave pública).
 - `docs/SIGNING.md`: comandos de openssl probados localmente (OpenSSL 3.5.3) y carga con `gh secret set`.
 
-**Falló / pendiente de verificar**
-- Aún no se ha ejecutado el workflow (falta que el usuario cargue los secrets).
-- No confirmado: formato del parámetro `path` del Device Portal para LocalState; si la Xbox exige confiar
-  el `.cer` (`--install-cert`).
+- El usuario generó el certificado y cargó los secrets. Licencia del código propio: **MPL-2.0** (`LICENSE`,
+  cabeceras Exhibit A; el código y los parches de terceros conservan su licencia).
+- CI: 5 ejecuciones de `build-host`. Fallos corregidos: falta `winrt/Windows.ApplicationModel.Activation.h`
+  (C3779); el empaquetado exige `mp:PhoneIdentity` (APPX1673). Run verde actual: 42520468937 (paquete 0.0.5.0).
+- Despliegue real en la Xbox con `ci/deploy.sh` (openappx) y log descargado con `ci/fetch-logs.sh`, sin tocar la web.
+  Problemas encontrados y corregidos (detalle en RESEARCH §10): `Name` del listado es el nombre visible; versiones
+  duplicadas durante la actualización; lanzamiento inmediato tras reinstalar falla (se reintenta); log bloqueado
+  para el portal (HTTP 423, ahora se abre en modo compartido); swapchain de 8×8 (ahora tamaño explícito).
+
+**Pendiente**
+- Confirmación visual del usuario en la TV (pantalla verde azulado) para cerrar el Hito 0.
 
 **Siguiente paso**
-- Usuario: generar certificado y cargar `UWP_CERT_PFX_BASE64` / `UWP_CERT_PASSWORD`.
-- Lanzar `gh workflow run build-host.yml`, iterar hasta verde, desplegar con `ci/deploy.sh` y bajar el log.
-- Pendiente de decidir por el usuario: licencia del código propio del runtime (no hay `LICENSE` todavía).
+- Tras la confirmación del usuario: Hito 1 (SDL2 2.0.20 WinRT + mando). No empezar sin su visto bueno.

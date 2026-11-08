@@ -227,3 +227,21 @@ Fuentes: Walbourn 2017/2022 y la página archivada de Microsoft
 - La versión del paquete la fija CI: `0.0.<run_number>.0`, para que cada despliegue sea una actualización.
 - Ren'Py se descargará en CI por tag (`renpy/VERSION`) en vez de submódulo: evita clones pesados y deja el tag
   fijado en un único sitio.
+
+## 10. Verificado en la consola del usuario (2026-11-08)
+
+Xbox Series S, OS **10.0.26100.9647**, Device Portal en `https://192.168.100.102:11443` (certificado `CN=192.168.100.102`).
+
+- **openappx 0.7.0 instala sin `--install-cert`**: la Xbox en Dev Mode acepta el paquete firmado con nuestro
+  certificado autofirmado sin confiarlo antes. Reinstalar la misma versión y actualizar a una más nueva funcionan.
+- `GET /api/app/packagemanager/packages` en Xbox: **`Name` es el nombre visible** ("Ren'Py UWP") y
+  `PackageFamilyName` vale `RenpyUWP` (sin hash). Hay que identificar el paquete por el prefijo de
+  `PackageFullName`. Durante una actualización **aparecen las dos versiones a la vez**: hay que tomar la más alta.
+- Lanzar justo después de reinstalar puede fallar con HTTP 400 `0x80270300` "Failed to launch the application"
+  (el paquete aún se está registrando). `ci/deploy.sh` espera y reintenta.
+- Descarga de archivos: **`path=\LocalState`** funciona. Si la app tiene el archivo abierto sin compartir,
+  el portal responde **HTTP 423** "File locked by another process" → el log se abre con `_wfsopen(..., _SH_DENYWR)`.
+- Ventana UWP: 1920×1080 DIPs, `RawPixelsPerViewPixel` = 1.0. `CreateSwapChainForCoreWindow` con 0×0 dio un
+  swapchain de **8×8**: hay que pasar el tamaño explícito.
+- D3D11: nivel de funciones **11.0** (`0xb000`) en modo App, como indicaba Walbourn. El adaptador se llama
+  `SraKmd_arden` y reporta 128 MB de memoria de vídeo dedicada.
