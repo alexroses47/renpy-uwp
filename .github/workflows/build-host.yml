@@ -43,6 +43,24 @@ jobs:
 
       - uses: microsoft/setup-msbuild@v2
 
+      - name: Restore SDL2 from cache
+        id: cache-sdl2
+        uses: actions/cache@v4
+        with:
+          path: out/deps/sdl2
+          key: sdl2-uwp-x64-${{ env.CONFIGURATION }}-${{ hashFiles('deps/sdl2/*.ps1') }}
+
+      - name: Build SDL2 (WinRT)
+        if: steps.cache-sdl2.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./deps/sdl2/build.ps1 -Prefix "$env:GITHUB_WORKSPACE/out/deps/sdl2" -Configuration $env:CONFIGURATION
+
+      - name: Stage SDL2 runtime next to the host project
+        shell: pwsh
+        run: |
+          Copy-Item out/deps/sdl2/bin/SDL2.dll host/RenpyUWP/SDL2.dll
+          Get-Content out/deps/sdl2/sdl2-build.json
+
       - name: Decode signing certificate
         shell: pwsh
         env:
@@ -84,6 +102,7 @@ jobs:
           msbuild host/RenpyUWP/RenpyUWP.vcxproj /m /nologo /v:minimal `
             /p:Configuration=$env:CONFIGURATION /p:Platform=x64 `
             /p:AppxPackageDir=$pkgDir `
+            /p:SdlDir="$env:GITHUB_WORKSPACE/out/deps/sdl2" `
             /p:AppxPackageSigningEnabled=false
           if ($LASTEXITCODE -ne 0) { throw "msbuild failed with exit code $LASTEXITCODE" }
           Get-ChildItem -Recurse out/AppPackages | Select-Object FullName, Length | Format-Table -AutoSize | Out-String -Width 300
@@ -113,6 +132,10 @@ jobs:
           $deps = New-Item -ItemType Directory -Force dist/Dependencies/x64
           Copy-Item $env:PKG_PATH $dist
           Copy-Item $env:CER_PATH $dist
+          New-Item -ItemType Directory -Force dist/licenses | Out-Null
+          Copy-Item out/deps/sdl2/licenses/* dist/licenses/
+          $listing = & tar -tf $env:PKG_PATH
+          if (-not ($listing -contains 'SDL2.dll')) { throw "SDL2.dll is not at the package root:`n$($listing -join "`n")" }
           $vclibs = Get-ChildItem -Recurse out/AppPackages -Filter 'Microsoft.VCLibs.x64.*.appx' |
                     Where-Object { $_.FullName -match '\\Dependencies\\x64\\' }
           if (-not $vclibs) {
