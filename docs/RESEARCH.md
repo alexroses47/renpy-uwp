@@ -399,3 +399,139 @@ Conclusiones:
 - Política por defecto (4K119.88 + 1440p): el modo se aplica bien, pero la primera medida dio 37.6 fps por una pausa única de ~1 s
   tras el cambio (resincronización HDMI). Desde la 0.0.16, una medida baja se repite antes de retroceder; solo la pérdida de
   dispositivo retrocede de inmediato a 1080p60.
+
+---
+
+# Hito 2 — CPython embebido (investigación 2026-11-08)
+
+Punto de partida: `docs/research-hito2.md` (investigación externa del usuario). Esta sección lo **verifica contra el código
+real** y marca qué cambia. Leyenda: **✔** confirmado, **✘** descartado/distinto, **≈** matizado.
+
+## 17. Lo que usa Kodi (verificado leyendo el código)
+
+### kodi-deps (`xbmc/kodi-deps`, PR #33 fusionado 2025-07-12, merge `c1599738`)
+- ✔ Build con **CMake + ExternalProject** (`CMakeLists.txt`); UWP con `-DCMAKE_SYSTEM_NAME=WindowsStore -DCMAKE_SYSTEM_VERSION=…`,
+  generador de Visual Studio (workflow `windows-2022`, VS 17, SDK 10.0.22621.0; plataformas `-App`/`-Desktop`).
+- ✔ Bloque python: `GIT_REPOSITORY https://github.com/thexai/cpython`, **`GIT_TAG 4c97e13f50ce1f925e5f95945c6d395b83f78a64`**,
+  `DEPENDS bzip2 openssl sqlite zlib expat libffi xz`, empaquetado como `python-3.12.11`.
+- ✘ **kodi-deps no tiene licencia** (sin archivo LICENSE; la API de GitHub devuelve `none`). → No copiamos nada de kodi-deps;
+  solo lo usamos como referencia.
+- Kodi ya pasó a 3.13/3.14 (kodi-deps #67–#82, hasta 3.14.10 y "Fix ctypes callbacks in UWP", 2026-11-07). **No hay rama 3.12
+  mantenida**: el último 3.12 de Kodi es este 3.12.11.
+
+### Fork `thexai/cpython` @ `4c97e13`
+- ✔ = upstream **v3.12.11** (`55fee9c "Python 3.12.11"`) **+ un solo commit "Kodi patches"** (thexai, 2025-06-21):
+  32 archivos, +1578/−188. Copia del diff: generada con `git show 4c97e13`.
+- ✔ **Sistema de build: CMake propio** (`CMakeLists.txt`, 1091 líneas, añadido por ese commit). Genera `python312.dll`,
+  `python3.dll` y **17 `.pyd`** (`_asyncio _bz2 _ctypes _decimal _elementtree _hashlib _lzma _multiprocessing _overlapped _queue
+  _socket _sqlite3 _ssl pyexpat select unicodedata _uuid`). Para los módulos congelados/deepfreeze descarga por NuGet
+  `pythonx86 3.12.10` y ejecuta `Programs/_freeze_module.py` y `Tools/build/deepfreeze.py`.
+- Defines: `_WIN32_WINNT=0x0A00 WINVER=0x0A00 NTDDI_VERSION=0x0A000007 Py_ENABLE_SHARED Py_BUILD_CORE[_BUILTIN]`; opciones
+  `/ZW /MP /sdl-`; **✘ no define `WINAPI_FAMILY`**: lo pone el generador VS por ser proyecto AppContainer (coincide con nuestro
+  host del Hito 1: sin definirlo a mano, `CreateFileW` ya no estaba declarado). ≈ El informe decía que había que definirlo
+  explícitamente: cierto con Ninja/otros generadores, no con el generador de Visual Studio.
+- ✘ **No enlaza solo con `WindowsApp.lib`**: el núcleo enlaza `vccorlib msvcrt zlib ws2_32 version Advapi32 Kernel32 Pathcch
+  Bcrypt` (los `.pyd` además `WindowsApp.lib`). Nuestro objetivo de enlazar solo `WindowsApp.lib` es **más estricto que Kodi**.
+- Módulos dentro del núcleo (built-in vía `PC/config.c`): los de PCbuild (`_abc array _ast binascii cmath errno faulthandler gc
+  math nt _operator _signal _md5 _sha1 _sha2 _sha3 _blake2 time _thread _tokenize _typing _statistics msvcrt _locale
+  _tracemalloc _winapi _codecs _weakref _random _bisect _heapq _lsprof itertools _collections _symtable mmap _csv _sre winreg
+  _struct _datetime _functools _json _opcode zlib _pickle cjkcodecs…`).
+  - ≈ **winreg, msvcrt, _winapi y mmap se mantienen compilados** (parcheados), no excluidos como proponía el informe.
+  - ✔ `_winapi` con stubs: `CreateJunction`, `GetShortPathName`, `_mimetypes_read_windows_registry` devuelven
+    `NotImplemented` (no `OSError`); `CreateProcess` y afines quedan fuera de la tabla con `#ifdef MS_WINDOWS_DESKTOP`;
+    `GetVersion` reimplementado con `GetVersionExW`.
+  - `msvcrt`: las funciones de consola (`getch`, `kbhit`…) devuelven 0/`NotImplemented` en APP.
+  - `mmap`: habilitado en APP (`PC/config.c` y `mmapmodule.c`).
+- Inicialización en Kodi (`xbmc/platform/win10/PlatformWin10.cpp`, `xbmc/interfaces/python/XBPython.cpp`): **`Py_Initialize()`
+  clásico + variables de entorno con rutas relativas** (`PYTHONHOME=system\python`, `PYTHONPATH=system\python\DLLs;…\Lib;…\site-packages`,
+  `PYTHONOPTIMIZE=1`). La stdlib se instala **como carpeta `Lib`**, no como zip. ✔ fijar home es imprescindible; ≈ Kodi no usa
+  `PyConfig` aislado (nuestra propuesta es más estricta, no está probada por Kodi).
+
+### Parches C del commit "Kodi patches" (resumen por archivo)
+| Archivo | Cambio |
+|---|---|
+| `PC/pyconfig.h` | `WIN32_LEAN_AND_MEAN`; si DESKTOP, anula APP/GAMES y viceversa; `Py_WINVER/Py_NTDDI` solo en DESKTOP; desactiva el `#pragma comment(lib)` automático y `Py_DEBUG` con `_DEBUG` |
+| `Include/internal/pycore_fileutils_windows.h` | `_Py_win_create_file()` → `CreateFile2` en APP (share 0→`FILE_SHARE_READ`, solo `FILE_ATTRIBUTE_NORMAL`, flags altos); `LoadPackagedLibrary` para `GetFileInformationByName` |
+| `Python/fileutils.c`, `Modules/posixmodule.c` | `stat` reescrito con `GetFileInformationByHandleEx(FileBasicInfo/FileStandardInfo)` en vez de `GetFileInformationByHandle`; `CreateFileW`→shim; `os.listdrives/listvolumes/listmounts/_getvolumepathname/isdevdrive/spawnv` deshabilitados en APP; `mkdir` con `CreateDirectoryW`; `getppid` = pid propio |
+| `Python/dynload_win.c` | `LoadPackagedLibrary` en vez de `LoadLibraryExW`; sin sufijo `_d` |
+| `Python/pytime.c` | sin `GetSystemTimeAdjustment` en APP (resolución del reloj no informada) |
+| `Python/sysmodule.c` | `getwindowsversion` sin leer el recurso de versión de `kernel32.dll` |
+| `Modules/faulthandler.c` | sin `AddVectoredExceptionHandler` en APP |
+| `Modules/socketmodule.c`, `overlapped.c`, `_ssl.c`, `_uuidmodule.c`, `_ctypes/*` | APIs de escritorio fuera (`if_nameindex`, `GetComputerNameExW`…) |
+| `Lib/importlib/*` | **elimina `WindowsRegistryFinder`** y el `import winreg` de `_bootstrap_external` |
+| `Lib/ctypes/__init__.py`, `Modules/_random*`, `_pickle.c`, `expat/xmlparse.c` | ajustes menores (semilla, `UNICODE`, entropía) |
+
+### Problemas encontrados en el fork (no aptos para nosotros tal cual)
+1. **Recorte de rutas específico de Kodi**: `_Py_win_create_file()` y `dynload_win.c` hacen `wcsstr(path, L"system")` y, si una
+   ruta absoluta contiene "system", la cortan desde ahí (Kodi instala Python en `system\python`). En nuestro caso rompería
+   cualquier ruta absoluta que contenga esa subcadena (p. ej. `E:\renpy\games\x\game\filesystem.rpy`).
+2. **Bug** en `_Py_find_data_to_stat()`: `st_size = ((long long)nFileSizeHigh) << 32 > nFileSizeLow;` (comparación en vez de suma)
+   → `st_size` = 0/1 cuando `stat` cae en el camino de `FindFirstFile`.
+3. `st_ino` = `CreationTime`, `st_dev` = 1 constante (afecta a `os.path.samefile`; aceptable).
+4. Requiere 7 dependencias externas por `find_package(... NO_MODULE)` con los paquetes CMake de Kodi.
+
+## 18. Upstream gh-152433 (autor thexai, abierto 2026-06-27)
+
+| PR | Estado | Tema | ¿En el fork 3.12.11? |
+|---|---|---|---|
+| #152601 | fusionado 2026-09-11 | socketmodule para UWP | ≈ sí, variante propia |
+| #152689 | fusionado | `ceval.c`: omitir `SetThreadStackGuarantee` | **no aplica**: en 3.12 no existe ese código (es de 3.14+, `hardware_stack_limits`) |
+| #152792 | fusionado | `_ctypes` callproc (COM) | ≈ sí |
+| #154700 | fusionado | `_ctypes` `malloc_closure` con `VirtualAllocFromApp` | **falta** (irrelevante si excluimos `_ctypes`) |
+| #152797 | fusionado | `dynload_win.c` con ruta relativa al proceso | ≈ el fork usa el truco "system"; **usar la versión upstream** |
+| #152962 | fusionado | `_winapi` | ≈ sí |
+| #153036 | fusionado | `overlapped.c` | ≈ sí |
+| #154918 | fusionado | `winreg` import condicional | ≈ el fork elimina `WindowsRegistryFinder` (más agresivo) |
+| #153021 | **abierto** | `_Py_WinCreateFile` con `CreateFile2` y **ruta relativa solo si cae dentro de la carpeta del ejecutable** | sustituye al truco "system" → **adoptar** |
+| #153700 | fusionado | refactor de `fileutils` (stat con `FILE_STANDARD_INFO`) | ≈ equivalente; upstream sin el bug de `st_size` |
+| #152479 | fusionado | `os.cpu_count()` en UWP | revisar |
+| #152604 / #152694 | fusionados | `sys.getwindowsversion`, `_winapi.GetVersion` | ≈ sí |
+| #152791 / #152793 | fusionados | `_ssl`, `_uuid` | ≈ sí (no los usaremos al principio) |
+| #152477, #156972, #161546 | fusionado/fusionado/abierto | mimalloc y `LoadLibrary` de librerías del sistema | **no aplica** a 3.12 (mimalloc es 3.13+) |
+| #161539 | abierto | callbacks de ctypes en UWP | no aplica (sin `_ctypes`) |
+| #154642 | **cerrado sin fusionar** | `platform._syscmd_ver()` | revisar si `platform` lo necesita |
+
+No hay backport a 3.12 (rama solo de seguridad). Los cambios se aplican a mano.
+
+## 19. Puntos del informe externo: estado
+
+| Punto de `research-hito2.md` | Estado |
+|---|---|
+| Kodi distribuye 3.12.11 UWP x64 probado en Series S | ✔ (kodi-deps #33 + fork; la prueba en Series S viene del texto del PR, no la puedo reproducir) |
+| El fork usa su propio CMake | ✔ |
+| Hay que definir `WINAPI_FAMILY` a mano con CMake | ≈ solo fuera del generador VS (Kodi no lo define) |
+| Excluir winreg / msvcrt / mmap | ✘ Kodi los compila parcheados; se pueden mantener |
+| `_winapi` con stubs | ✔ (devuelven `NotImplemented`) |
+| Stub de `GetVersionExW` | ✘ no hace falta (existe en APP); solo se quita la lectura del recurso de versión |
+| `SetThreadStackGuarantee` en ceval | ✘ no existe en 3.12 |
+| Kodi fija home/paths | ✔ por variables de entorno con rutas relativas, no con `PyConfig` aislado |
+| Stdlib en zip | ✘ Kodi usa carpeta `Lib`; nuestro zip es decisión propia (sin probar en UWP) |
+| `GetUserNameW`, consola, `getpath`+registro | sin confirmar: lo dirá la compilación con `/we4013` y el arranque |
+
+## 20. Lista de módulos de Ren'Py (fuente: renpy-build `renpy-8.5.3.26051504`)
+
+- C (built-in en Linux/mac/Android/iOS, `source/Python-3.12.8-Setup.stdlib`): `_asyncio _bisect _bz2 _contextvars _csv _datetime
+  _elementtree _heapq _json _lsprof _opcode _pickle _queue _random _statistics _struct _typing _zoneinfo array binascii cmath math
+  mmap select unicodedata zlib _lzma pyexpat _md5 _sha1 _sha2 _sha3 _blake2 _codecs_* _multibytecodec _ctypes _socket _ssl _hashlib`
+  (+ en Windows `_winapi _overlapped msvcrt winreg`).
+- Python (`tasks/pythonlib.py`, `PY3_MODULES`): ~150 módulos de la stdlib empaquetados como `.pyc` (incluye `asyncio`, `ctypes`,
+  `email`, `http`, `json`, `logging`, `multiprocessing`, `xml`, `zoneinfo`, `subprocess`, `ssl`, `socket`, `urllib`…) + terceros
+  (`certifi chardet ecdsa future idna past six requests rsa pyasn1 urllib3 websockets pefile brotli`).
+- **Fuente de verdad pendiente**: volcado real de `sys.modules` de KS:RE en el PC del usuario (`tools/dump-renpy-modules.sh`).
+
+## 21. Recomendación de versión (pendiente del visto bueno del usuario)
+
+**Base: el fork en 3.12.11 (`4c97e13`) más una serie de parches nuestra; build propio, no el CMake de Kodi.** Motivos:
+1. Compatibilidad: Ren'Py exige `>=3.12.8,<3.13`. En toda la serie 3.12 el formato `.pyc` (magic 3531) y la ABI de extensiones
+   son iguales, así que los `.pyc` y los módulos Cython funcionan igual con 3.12.11 que con 3.12.8.
+2. Rebasar a 3.12.8 no aporta nada y pierde tres versiones de correcciones de seguridad (tarfile, ipaddress…). Además el parche
+   de Kodi está hecho y probado sobre 3.12.11: rebasar añade conflictos sin beneficio.
+3. "Tal cual" no sirve: el truco de rutas "system" rompería `E:\…`, tiene el bug de `st_size` y exige 7 dependencias empaquetadas
+   al estilo Kodi. Nuestra serie de parches encima: (a) `_Py_WinCreateFile` y `dynload_win.c` de upstream (#153021/#152797),
+   (b) corregir `st_size`, (c) los parches upstream de la tabla §18 que apliquen, (d) lo que pida `/we4013` + solo `WindowsApp.lib`.
+4. Build propio (CMake escrito por nosotros, lista de fuentes tomada de `PCbuild/pythoncore.vcxproj`): **biblioteca estática con
+   todos los módulos C built-in** (`PC/config.c` ampliado), como pidió el usuario y como hace Ren'Py en web/iOS; así en el Hito 4
+   los módulos Cython de Ren'Py entran con `PyImport_AppendInittab`. Módulos con dependencias externas (`_ssl _hashlib _bz2 _lzma
+   _sqlite3 _ctypes`) fuera en el Hito 2; `pyexpat`, `_elementtree` y `_decimal` usan el código vendorizado de CPython y pueden entrar.
+5. Alternativa a valorar más adelante: rebasar la misma serie sobre **3.12.16** (última 3.12, más correcciones de seguridad).
+   No ahora: añade conflictos y aleja la base de la que Kodi probó en Series S.
