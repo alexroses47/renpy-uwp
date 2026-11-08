@@ -20,6 +20,9 @@ CC BY-NC-ND 4.0, code under MPL-2.0), are provided by the user from their own co
 
 | Component | Version | License | How it is used |
 |---|---|---|---|
+| CPython (`python312.lib` linked into `RenpyUWP.exe`, `python/python312.zip`) | 3.12.11 = `thexai/cpython@4c97e13` + `python/cpython-uwp/patches` | PSF-2.0 — `licenses/CPython-LICENSE.txt` (includes the licenses of vendored expat, libmpdec, HACL*) | Embedded interpreter |
+| zlib | 1.3.1 (release tarball, SHA-256 `9a93b2b7…df23`, same as renpy-build) | zlib — `licenses/zlib-LICENSE.txt` | Compiled into `zlibstatic.lib` by `python/cpython-uwp` |
+| CPython build file `python/cpython-uwp/CMakeLists.txt` | derived from `thexai/cpython@4c97e13` | PSF-2.0 | Adapted for a static library (see its header) |
 | SDL2 (`SDL2.dll`, WinRT backend) | 2.0.20 (release tarball, SHA-256 `c56aba1d…dd06`, unmodified) | zlib — full text shipped in the artifact as `licenses/SDL2-LICENSE.txt` | Window, events, gamepad (`deps/sdl2/build.ps1`) |
 | Microsoft Visual C++ UWP runtime (`Microsoft.VCLibs.x64.14.00.appx`) | 14.0 (from the Windows SDK on the CI runner) | Microsoft Visual Studio redistributable terms | Framework dependency package installed next to the app |
 
@@ -49,7 +52,6 @@ Versions follow `renpy-build` tag `renpy-8.5.3.26051504` unless noted in `docs/R
 | Ren'Py | 8.5.3.26051504 | MIT (plus bundled components with their own licenses) | |
 | CPython | 3.12.11 from the `thexai/cpython` fork, commit `4c97e13` (upstream v3.12.11 + "Kodi patches"), plus our own patch series | PSF-2.0 (the fork carries CPython's `LICENSE` and declares no other license; patches to CPython files are distributed under PSF-2.0) | Embedded interpreter (milestone 2). Upstream patches from gh-152433 (python/cpython) are PSF-2.0 as well |
 | SDL2_image | 2.6.2 | zlib | |
-| zlib | 1.3.1 | zlib | |
 | bzip2 | 1.0.8 | bzip2 license (BSD-style) | |
 | xz / liblzma | 5.4.2 | 0BSD / public domain | |
 | libffi | 3.4.5 | MIT | |

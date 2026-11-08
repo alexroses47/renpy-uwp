@@ -30,7 +30,7 @@ concurrency:
 jobs:
   build:
     runs-on: windows-2022
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
       CONFIGURATION: ${{ inputs.configuration || 'Release' }}
       SDK_VERSION: 10.0.22621.0
@@ -54,6 +54,31 @@ jobs:
         if: steps.cache-sdl2.outputs.cache-hit != 'true'
         shell: pwsh
         run: ./deps/sdl2/build.ps1 -Prefix "$env:GITHUB_WORKSPACE/out/deps/sdl2" -Configuration $env:CONFIGURATION
+
+      - name: Host Python 3.12 (frozen modules and .pyc generation)
+        id: hostpy
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Restore CPython from cache
+        id: cache-cpython
+        uses: actions/cache@v4
+        with:
+          path: out/deps/cpython
+          key: cpython-uwp-x64-${{ env.CONFIGURATION }}-${{ hashFiles('python/cpython-uwp/**') }}-py${{ steps.hostpy.outputs.python-version }}
+
+      - name: Build CPython 3.12 (UWP, static)
+        if: steps.cache-cpython.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./python/cpython-uwp/build.ps1 -Prefix "$env:GITHUB_WORKSPACE/out/deps/cpython" -HostPython "${{ steps.hostpy.outputs.python-path }}" -Configuration $env:CONFIGURATION
+
+      - name: Stage Python stdlib zip next to the host project
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force host/RenpyUWP/python | Out-Null
+          Copy-Item out/deps/cpython/python312.zip host/RenpyUWP/python/python312.zip
+          Get-Content out/deps/cpython/cpython-uwp-build.json
 
       - name: Stage SDL2 runtime next to the host project
         shell: pwsh
@@ -103,9 +128,22 @@ jobs:
             /p:Configuration=$env:CONFIGURATION /p:Platform=x64 `
             /p:AppxPackageDir=$pkgDir `
             /p:SdlDir="$env:GITHUB_WORKSPACE/out/deps/sdl2" `
+            /p:PythonDir="$env:GITHUB_WORKSPACE/out/deps/cpython" `
             /p:AppxPackageSigningEnabled=false
           if ($LASTEXITCODE -ne 0) { throw "msbuild failed with exit code $LASTEXITCODE" }
           Get-ChildItem -Recurse out/AppPackages | Select-Object FullName, Length | Format-Table -AutoSize | Out-String -Width 300
+
+      - name: Audit imports of RenpyUWP.exe (dumpbin /imports)
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Recurse host/RenpyUWP -Filter RenpyUWP.exe | Where-Object { $_.FullName -notmatch 'AppPackages' } | Select-Object -First 1
+          $dumpbin = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC" -Recurse -Filter dumpbin.exe | Where-Object { $_.FullName -match 'Hostx64\\x64' } | Select-Object -First 1
+          New-Item -ItemType Directory -Force dist | Out-Null
+          & $dumpbin.FullName /nologo /imports $exe.FullName | Set-Content -Encoding utf8 dist/imports-RenpyUWP.txt
+          $dlls = Select-String -Path dist/imports-RenpyUWP.txt -Pattern '^\s{4}(\S+\.dll)$' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Sort-Object -Unique
+          Write-Host "Imported DLLs:"; $dlls | ForEach-Object { Write-Host "  $_" }
+          $odd = $dlls | Where-Object { $_ -notmatch '^(api-ms-win-|ext-ms-win-|vcruntime140_app|msvcp140_app|vccorlib140_app|SDL2\.dll)' }
+          if ($odd) { Write-Host "::warning::DLLs outside the API sets: $($odd -join ', ') (see dist/imports-RenpyUWP.txt)" }
 
       - name: Sign package
         shell: pwsh
@@ -134,8 +172,12 @@ jobs:
           Copy-Item $env:CER_PATH $dist
           New-Item -ItemType Directory -Force dist/licenses | Out-Null
           Copy-Item out/deps/sdl2/licenses/* dist/licenses/
+          Copy-Item out/deps/cpython/licenses/* dist/licenses/
           $listing = & tar -tf $env:PKG_PATH
           if (-not ($listing -contains 'SDL2.dll')) { throw "SDL2.dll is not at the package root:`n$($listing -join "`n")" }
+          foreach ($f in @('python/python312.zip', 'python/smoke.py')) {
+            if (-not ($listing -contains $f)) { throw "$f is not in the package:`n$($listing -join "`n")" }
+          }
           $vclibs = Get-ChildItem -Recurse out/AppPackages -Filter 'Microsoft.VCLibs.x64.*.appx' |
                     Where-Object { $_.FullName -match '\\Dependencies\\x64\\' }
           if (-not $vclibs) {
