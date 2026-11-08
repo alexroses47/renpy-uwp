@@ -8,7 +8,9 @@
 
 #include <fileapifromapp.h>
 
+#include <algorithm>
 #include <atomic>
+#include <map>
 #include <cstdio>
 #include <string>
 #include <thread>
@@ -162,6 +164,109 @@ bool TryTestFile(const std::wstring& root) {
     return true;
 }
 
+struct WalkStats {
+    uint64_t files = 0, dirs = 0, bytes = 0;
+    std::map<std::wstring, std::pair<uint64_t, uint64_t>> byExt;  // ext -> (count, bytes)
+    std::wstring largest;
+    uint64_t largestSize = 0;
+    int errors = 0;
+};
+
+void Walk(const std::wstring& dir, WalkStats& st, int depth) {
+    WIN32_FIND_DATAW fd{};
+    HANDLE h = FindFirstFileExFromAppW((dir + L"*").c_str(), FindExInfoBasic, &fd, FindExSearchNameMatch, nullptr,
+                                       FIND_FIRST_EX_LARGE_FETCH);
+    if (h == INVALID_HANDLE_VALUE) {
+        ++st.errors;
+        return;
+    }
+    do {
+        if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0) continue;
+        std::wstring path = dir + fd.cFileName;
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            ++st.dirs;
+            if (depth < 32) Walk(path + L"\\", st, depth + 1);
+            continue;
+        }
+        uint64_t size = (static_cast<uint64_t>(fd.nFileSizeHigh) << 32) | fd.nFileSizeLow;
+        ++st.files;
+        st.bytes += size;
+        const wchar_t* dot = wcsrchr(fd.cFileName, L'.');
+        std::wstring ext = dot ? dot : L"(none)";
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
+        auto& e = st.byExt[ext];
+        e.first += 1;
+        e.second += size;
+        if (size > st.largestSize) {
+            st.largestSize = size;
+            st.largest = path;
+        }
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+}
+
+// Sequential read throughput of up to 64 MB of `path` (USB speed matters for .rpa archives and video).
+void MeasureRead(const std::wstring& path) {
+    HANDLE h = CreateFile2FromAppW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, nullptr);
+    if (h == INVALID_HANDLE_VALUE) {
+        RLOG("storage:     read test: cannot open %ls (error %lu)", path.c_str(), GetLastError());
+        return;
+    }
+    std::vector<char> buf(1 << 20);
+    uint64_t total = 0;
+    LARGE_INTEGER f, t0, t1;
+    QueryPerformanceFrequency(&f);
+    QueryPerformanceCounter(&t0);
+    DWORD got = 0;
+    while (total < (64ull << 20) && ReadFile(h, buf.data(), static_cast<DWORD>(buf.size()), &got, nullptr) && got) {
+        total += got;
+    }
+    QueryPerformanceCounter(&t1);
+    CloseHandle(h);
+    double sec = static_cast<double>(t1.QuadPart - t0.QuadPart) / static_cast<double>(f.QuadPart);
+    RLOG("storage:     read test: %llu MB of %ls in %.2f s = %.1f MB/s", total >> 20, path.c_str(), sec,
+         sec > 0 ? (total / 1048576.0) / sec : 0.0);
+}
+
+// Standard layout: <drive>:\renpy\games\<game>\game\ (see CLAUDE.md).
+void ProbeGames(const std::wstring& root) {
+    std::wstring gamesDir = root + L"renpy\\games\\";
+    WIN32_FILE_ATTRIBUTE_DATA ad{};
+    if (!GetFileAttributesExFromAppW(gamesDir.c_str(), GetFileExInfoStandard, &ad)) return;
+    RLOG("storage:   games folder %ls found", gamesDir.c_str());
+    WIN32_FIND_DATAW fd{};
+    HANDLE h = FindFirstFileExFromAppW((gamesDir + L"*").c_str(), FindExInfoBasic, &fd, FindExSearchNameMatch, nullptr, 0);
+    if (h == INVALID_HANDLE_VALUE) {
+        RLOG("storage:   cannot list %ls (error %lu)", gamesDir.c_str(), GetLastError());
+        return;
+    }
+    std::vector<std::wstring> games;
+    do {
+        if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && wcscmp(fd.cFileName, L".") && wcscmp(fd.cFileName, L"..")) {
+            games.emplace_back(fd.cFileName);
+        }
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+    for (auto const& g : games) {
+        std::wstring gameDir = gamesDir + g + L"\\game\\";
+        if (!GetFileAttributesExFromAppW(gameDir.c_str(), GetFileExInfoStandard, &ad)) {
+            RLOG("storage:   game '%ls': no game\\ folder (error %lu)", g.c_str(), GetLastError());
+            continue;
+        }
+        RLOG("storage:   game '%ls': top level of %ls", g.c_str(), gameDir.c_str());
+        ListDir(gameDir, FindFirstFileExFromAppW, "FindFirstFileExFromAppW", true);
+        ULONGLONG t0 = GetTickCount64();
+        WalkStats st;
+        Walk(gameDir, st, 0);
+        RLOG("storage:   game '%ls': %llu files, %llu dirs, %llu MB total, %d unreadable dirs, walk took %llu ms", g.c_str(),
+             st.files, st.dirs, st.bytes >> 20, st.errors, GetTickCount64() - t0);
+        for (auto const& [ext, cb] : st.byExt) {
+            RLOG("storage:     %-8ls %6llu files %8llu KB", ext.c_str(), cb.first, cb.second >> 10);
+        }
+        if (!st.largest.empty()) MeasureRead(st.largest);
+    }
+}
+
 void ProbeKnownFolders() {
     try {
         auto folders = KnownFolders::RemovableDevices().GetFoldersAsync().get();
@@ -225,6 +330,7 @@ void Probe() {
         ListDir(root, FindFirstFileExFromAppW, "FindFirstFileExFromAppW", true);
         ListDir(root, FindFirstFileExW, "FindFirstFileExW (plain Win32)", false);
         if (TryTestFile(root)) ++found;
+        ProbeGames(root);
     }
     if (found == 0) RLOG("storage: %ls was not found on any drive", kTestFile);
 

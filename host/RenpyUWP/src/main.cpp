@@ -127,9 +127,9 @@ public:
             RLOG("fatal: renderer initialization failed");
             return 1;
         }
-        Measure(3.0, "baseline (initial output mode)");
-
         m_haveHdmi = haveHdmi;
+        Measure(4.0, "baseline (initial output mode)");
+
         if (haveHdmi && !TryBestMode()) return 1;
 
         RLOG("entering main loop (A/B: color, X: fps report, Y: storage probe, View: default HDMI mode, Menu: retry 4K120)");
@@ -139,7 +139,7 @@ public:
         while (m_running) {
             TimedPump();
             if (!RunPendingAction()) break;
-            if (!Frame()) break;
+            if (Frame() == renpyuwp::Renderer::FrameResult::Error) break;
             if (GetTickCount64() - m_lastPeriodicReport > 30000) {
                 ReportFps("periodic (last 30 s)");
                 m_meter.Start();
@@ -155,23 +155,54 @@ public:
     }
 
 private:
-    // Switches HDMI to the best candidate mode, rebuilds the swapchain at that size and measures fps.
+    // Watchdog over the candidate modes: a mode is only kept if frames really reach the display
+    // (fps >= 40% of the refresh rate). Otherwise the next candidate is tried, then the default mode.
     bool TryBestMode() {
-        auto best = renpyuwp::display::RequestBest([this] { PumpEvents(); });
-        LogWindowState("after HDMI request");
-        return RebuildAndMeasure(best, "final output");
+        auto pump = [this] { PumpEvents(); };
+        for (int i = 0; i < renpyuwp::display::CandidateCount(); ++i) {
+            renpyuwp::display::Mode active;
+            if (!renpyuwp::display::RequestCandidate(i, pump, active)) continue;
+            LogWindowState("after HDMI request");
+            double fps = 0;
+            if (!RebuildAndMeasure(active, "candidate", &fps)) return false;
+            double hz = active.refreshHz > 0 ? active.refreshHz : 60.0;
+            if (fps >= 0.4 * hz) {
+                RLOG("HDMI: ACCEPTED %s: %.1f fps at %.3f Hz (%.0f%%)", renpyuwp::display::CandidateLabel(i), fps, hz,
+                     100.0 * fps / hz);
+                m_activeMode = active;
+                return true;
+            }
+            RLOG("HDMI: REJECTED %s: mode was set but only %.1f fps reached the display at %.3f Hz "
+                 "(no vsync: output pipeline/link not running in this mode)",
+                 renpyuwp::display::CandidateLabel(i), fps, hz);
+        }
+        RLOG("HDMI: no candidate mode is usable; going back to the default mode");
+        return RestoreDefaultAndMeasure();
     }
 
-    bool RebuildAndMeasure(const renpyuwp::display::Mode& mode, const char* what) {
+    bool RestoreDefaultAndMeasure() {
+        renpyuwp::display::RestoreDefault();
+        ULONGLONG until = GetTickCount64() + 3000;
+        while (GetTickCount64() < until) {
+            PumpEvents();
+            Sleep(10);
+        }
+        m_activeMode = renpyuwp::display::Current();
+        return RebuildAndMeasure(m_activeMode, "default output", nullptr);
+    }
+
+    bool RebuildAndMeasure(const renpyuwp::display::Mode& mode, const char* what, double* fpsOut) {
         uint32_t w = mode.width ? mode.width : 1920, h = mode.height ? mode.height : 1080;
         if (!m_renderer.Recreate(w, h)) {
             RLOG("fatal: swapchain recreation failed");
             return false;
         }
+        Settle(2.0);
         char label[128];
         snprintf(label, sizeof(label), "%s %ux%u @ %.3f Hz, swapchain %ux%u", what, mode.width, mode.height,
                  mode.refreshHz, m_renderer.Width(), m_renderer.Height());
-        Measure(5.0, label);
+        double fps = Measure(4.0, label);
+        if (fpsOut) *fpsOut = fps;
         m_meter.Start();
         ResetTimers();
         m_lastPeriodicReport = GetTickCount64();
@@ -184,13 +215,7 @@ private:
         m_pendingAction = 0;
         if (action == 1) {
             RLOG("action: restore default HDMI mode");
-            renpyuwp::display::RestoreDefault();
-            ULONGLONG until = GetTickCount64() + 3000;
-            while (GetTickCount64() < until) {
-                PumpEvents();
-                Sleep(10);
-            }
-            return RebuildAndMeasure(renpyuwp::display::Current(), "default output");
+            return RestoreDefaultAndMeasure();
         }
         if (action == 2) {
             RLOG("action: retry best HDMI mode");
@@ -224,15 +249,14 @@ private:
         }
     }
 
-    bool Frame() {
+    renpyuwp::Renderer::FrameResult Frame() {
         LARGE_INTEGER t0, t1;
         QueryPerformanceCounter(&t0);
-        bool ok = m_renderer.Frame(kColors[m_color]);
+        auto r = m_renderer.Frame(kColors[m_color]);
         QueryPerformanceCounter(&t1);
         m_presentTicks += t1.QuadPart - t0.QuadPart;
-        if (!ok) return false;
-        m_meter.Tick();
-        return true;
+        if (r == renpyuwp::Renderer::FrameResult::Presented) m_meter.Tick();
+        return r;
     }
 
     // Times event pumping separately from Present, to tell vsync waits from SDL blocking.
@@ -249,16 +273,31 @@ private:
         m_presentTicks = 0;
     }
 
-    void Measure(double seconds, const char* label) {
+    // Renders for `seconds` without measuring (lets the TV and the compositor settle after a mode change).
+    void Settle(double seconds) {
+        ULONGLONG until = GetTickCount64() + static_cast<ULONGLONG>(seconds * 1000);
+        while (m_running && GetTickCount64() < until) {
+            PumpEvents();
+            if (Frame() == renpyuwp::Renderer::FrameResult::Error) break;
+        }
+    }
+
+    // Measures presented frames per second over `seconds` of wall time. Returns the fps.
+    double Measure(double seconds, const char* label) {
         RLOG("fps: measuring %.0f s: %s", seconds, label);
         uint32_t pc0 = 0, prc0 = 0, src0 = 0, pc1 = 0, prc1 = 0, src1 = 0;
         bool stats0 = m_renderer.FrameStatistics(pc0, prc0, src0);
         m_meter.Start();
         ResetTimers();
-        while (m_running && m_meter.Seconds() < seconds) {
+        ULONGLONG until = GetTickCount64() + static_cast<ULONGLONG>(seconds * 1000);
+        while (m_running && GetTickCount64() < until) {
             TimedPump();
-            if (!Frame()) break;
+            if (Frame() == renpyuwp::Renderer::FrameResult::Error) break;
         }
+        double wall = seconds;
+        double fps = static_cast<double>(m_meter.Frames()) / wall;
+        RLOG("fps: %llu frames presented in %.1f s of wall time = %.2f fps",
+             static_cast<unsigned long long>(m_meter.Frames()), wall, fps);
         ReportFps(label);
         if (stats0 && m_renderer.FrameStatistics(pc1, prc1, src1)) {
             double s = m_meter.Seconds();
@@ -267,6 +306,7 @@ private:
         } else {
             RLOG("fps: DXGI frame statistics not available");
         }
+        return fps;
     }
 
     void ReportFps(const char* label) {
@@ -279,11 +319,11 @@ private:
         RLOG("fps:   avg per frame: event pump %.2f ms, Present %.2f ms",
              1000.0 * static_cast<double>(m_pumpTicks) / static_cast<double>(f.QuadPart) / frames,
              1000.0 * static_cast<double>(m_presentTicks) / static_cast<double>(f.QuadPart) / frames);
-        uint32_t ok, occ, other;
+        uint32_t ok, occ, other, skipped;
         long last;
-        m_renderer.TakePresentStats(ok, occ, other, last);
-        RLOG("fps:   Present results: S_OK=%u OCCLUDED=%u other=%u (last other 0x%08lx)", ok, occ, other,
-             static_cast<unsigned long>(last));
+        m_renderer.TakePresentStats(ok, occ, other, last, skipped);
+        RLOG("fps:   Present results: S_OK=%u OCCLUDED=%u other=%u (last other 0x%08lx), skipped (no buffer within 100 ms)=%u",
+             ok, occ, other, static_cast<unsigned long>(last), skipped);
     }
 
     void PumpEvents() {
@@ -381,6 +421,7 @@ private:
     LONGLONG m_presentTicks = 0;
     int m_color = 0;
     int m_pendingAction = 0;
+    renpyuwp::display::Mode m_activeMode;
     bool m_haveHdmi = false;
     bool m_running = true;
 };

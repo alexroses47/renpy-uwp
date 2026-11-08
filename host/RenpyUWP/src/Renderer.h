@@ -7,7 +7,7 @@
 #include <windows.h>
 
 #include <d3d11.h>
-#include <dxgi1_2.h>
+#include <dxgi1_3.h>
 
 #include <cstdint>
 
@@ -23,13 +23,15 @@ public:
     bool Resize(uint32_t width, uint32_t height);
     // Destroys and creates the swapchain again (needed after an HDMI mode change).
     bool Recreate(uint32_t width, uint32_t height);
-    // Clears to the color and presents with vsync. Returns false on a fatal error.
-    bool Frame(const float rgba[4]);
+    enum class FrameResult { Presented, Skipped, Error };
+    // Waits (at most `waitMs`) for the swapchain to accept a frame, then clears and presents with vsync.
+    // Skipped = the display did not release a buffer in time (no vsync), so nothing was presented.
+    FrameResult Frame(const float rgba[4], DWORD waitMs = 100);
     // Present count / refresh count from DXGI frame statistics, if available.
     bool FrameStatistics(uint32_t& presentCount, uint32_t& presentRefreshCount, uint32_t& syncRefreshCount);
 
     // Present() results since the last call: S_OK count, DXGI_STATUS_OCCLUDED count, other count/last code.
-    void TakePresentStats(uint32_t& ok, uint32_t& occluded, uint32_t& other, long& lastOther);
+    void TakePresentStats(uint32_t& ok, uint32_t& occluded, uint32_t& other, long& lastOther, uint32_t& skipped);
 
     uint32_t Width() const { return m_width; }
     uint32_t Height() const { return m_height; }
@@ -41,6 +43,8 @@ private:
     winrt::com_ptr<ID3D11Device> m_device;
     winrt::com_ptr<ID3D11DeviceContext> m_context;
     winrt::com_ptr<IDXGISwapChain1> m_swapchain;
+    HANDLE m_frameWait = nullptr;
+    uint32_t m_skipped = 0;
     winrt::com_ptr<ID3D11RenderTargetView> m_rtv;
     winrt::com_ptr<IDXGIFactory2> m_factory;
     IUnknown* m_coreWindow = nullptr;

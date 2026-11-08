@@ -23,15 +23,19 @@ bool Init();
 // Current output mode (0x0 if unavailable).
 Mode Current();
 
-// Tries the candidate list in order (4K120, 1440p120, 4K60, 1080p120). Each attempt is logged.
-// `pump` is called while waiting for the async request (must keep the UI thread responsive).
-// Returns the mode that ended up active.
-Mode RequestBest(const std::function<void()>& pump);
+// Candidate modes in order of preference: 4K120, 1440p120, 4K60, 1080p120.
+int CandidateCount();
+const char* CandidateLabel(int index);
+
+// Requests candidate `index` if the display lists it. `pump` is called while waiting for the
+// async request (keeps the UI thread responsive). On success fills `active` with the mode the
+// system reports afterwards. The host still has to verify that frames actually reach the display.
+bool RequestCandidate(int index, const std::function<void()>& pump, Mode& active);
 
 // Re-requests the last successfully chosen mode (after resuming). Does not wait.
 void Reapply();
 
-// Asks the system to go back to the default mode. Does not wait.
+// Asks the system to go back to the default mode (and forgets the chosen mode). Does not wait.
 void RestoreDefault();
 
 }  // namespace renpyuwp::display

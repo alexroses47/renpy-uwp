@@ -155,40 +155,45 @@ Mode Current() {
     return r;
 }
 
-Mode RequestBest(const std::function<void()>& pump) {
-    if (!g_hdmi) return Current();
-    struct Candidate {
-        uint32_t w, h;
-        double minHz, maxHz;
-        const char* label;
-    } candidates[] = {
-        {3840, 2160, 119.0, 121.0, "3840x2160 @ 120 Hz (target)"},
-        {2560, 1440, 119.0, 121.0, "2560x1440 @ 120 Hz"},
-        {3840, 2160, 59.0, 61.0, "3840x2160 @ 60 Hz"},
-        {1920, 1080, 119.0, 121.0, "1920x1080 @ 120 Hz"},
-    };
-    for (auto const& c : candidates) {
-        auto mode = Find(c.w, c.h, c.minHz, c.maxHz);
-        if (!mode) {
-            RLOG("HDMI: candidate %s: NOT in the supported mode list", c.label);
-            continue;
-        }
-        RLOG("HDMI: candidate %s: listed", c.label);
-        if (Request(*mode, pump)) {
-            // Give the TV a moment to resync, then report what is really active.
-            ULONGLONG until = GetTickCount64() + 1500;
-            while (GetTickCount64() < until) {
-                pump();
-                Sleep(10);
-            }
-            auto cur = g_hdmi.GetCurrentDisplayMode();
-            RLOG("HDMI: active after request: %s", cur ? Describe(cur).c_str() : "<none>");
-            g_chosen = *mode;
-            return Current();
-        }
+namespace {
+struct Candidate {
+    uint32_t w, h;
+    double minHz, maxHz;
+    const char* label;
+};
+const Candidate kCandidates[] = {
+    {3840, 2160, 119.0, 121.0, "3840x2160 @ 120 Hz (target)"},
+    {2560, 1440, 119.0, 121.0, "2560x1440 @ 120 Hz"},
+    {3840, 2160, 59.0, 61.0, "3840x2160 @ 60 Hz"},
+    {1920, 1080, 119.0, 121.0, "1920x1080 @ 120 Hz"},
+};
+}  // namespace
+
+int CandidateCount() { return static_cast<int>(sizeof(kCandidates) / sizeof(kCandidates[0])); }
+
+const char* CandidateLabel(int index) { return kCandidates[index].label; }
+
+bool RequestCandidate(int index, const std::function<void()>& pump, Mode& active) {
+    if (!g_hdmi) return false;
+    auto const& c = kCandidates[index];
+    auto mode = Find(c.w, c.h, c.minHz, c.maxHz);
+    if (!mode) {
+        RLOG("HDMI: candidate %s: NOT in the supported mode list", c.label);
+        return false;
     }
-    RLOG("HDMI: no candidate mode could be set; staying in the current mode");
-    return Current();
+    RLOG("HDMI: candidate %s: listed", c.label);
+    if (!Request(*mode, pump)) return false;
+    // Give the TV a moment to resync, then report what is really active.
+    ULONGLONG until = GetTickCount64() + 1500;
+    while (GetTickCount64() < until) {
+        pump();
+        Sleep(10);
+    }
+    auto cur = g_hdmi.GetCurrentDisplayMode();
+    RLOG("HDMI: active after request: %s", cur ? Describe(cur).c_str() : "<none>");
+    g_chosen = *mode;
+    active = Current();
+    return true;
 }
 
 void Reapply() {
@@ -204,6 +209,7 @@ void Reapply() {
 void RestoreDefault() {
     if (!g_hdmi) return;
     try {
+        g_chosen = nullptr;
         g_hdmi.SetDefaultDisplayModeAsync();
         RLOG("HDMI: requested default display mode");
     } catch (hresult_error const& e) {
