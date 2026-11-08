@@ -378,6 +378,8 @@ add_library(expat_uwp STATIC
 )
 target_compile_definitions(expat_uwp PRIVATE XML_STATIC _CRT_SECURE_NO_WARNINGS)
 target_compile_options(expat_uwp PRIVATE /we4013)
+# CPython's expat_config.h includes pyconfig.h (PC/), which needs Include/ for pyport.h etc.
+target_include_directories(expat_uwp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/PC ${CMAKE_CURRENT_SOURCE_DIR}/Include)
 
 add_library(mpdec_uwp STATIC
   Modules/_decimal/libmpdec/basearith.c
@@ -397,7 +399,7 @@ add_library(mpdec_uwp STATIC
 )
 # CONFIG_64 + ANSI: portable C, no MASM helpers (same choice as the fork for x64).
 target_compile_definitions(mpdec_uwp PRIVATE CONFIG_64 ANSI _CRT_SECURE_NO_WARNINGS)
-target_include_directories(mpdec_uwp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Modules/_decimal/libmpdec)
+target_include_directories(mpdec_uwp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Modules/_decimal/libmpdec ${CMAKE_CURRENT_SOURCE_DIR}/PC ${CMAKE_CURRENT_SOURCE_DIR}/Include)
 target_compile_options(mpdec_uwp PRIVATE /we4013)
 
 set(DECIMAL_SOURCES Modules/_decimal/_decimal.c)
