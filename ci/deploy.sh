@@ -96,6 +96,12 @@ if [[ $install_cert -eq 1 ]]; then
 fi
 
 # --- 4. Install --------------------------------------------------------------
+# A running instance blocks the upgrade ("Another deployment is running", HTTP 409) until it exits.
+old_pfn="$(dp_package_full_name || true)"
+if [[ -n "$old_pfn" && -n "$openappx_bin" ]]; then
+    dp_info "Stopping $old_pfn (if running)"
+    oa --stop "$old_pfn" >/dev/null 2>&1 || true
+fi
 installed=0
 if [[ -n "$openappx_bin" ]]; then
     dp_info "Installing with openappx"
