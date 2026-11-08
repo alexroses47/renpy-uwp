@@ -131,8 +131,10 @@ public:
 
         if (haveHdmi) {
             auto best = renpyuwp::display::RequestBest([this] { PumpEvents(); });
-            if (best.width && (best.width != m_renderer.Width() || best.height != m_renderer.Height())) {
-                m_renderer.Resize(best.width, best.height);
+            LogWindowState("after HDMI request");
+            if (best.width && !m_renderer.Recreate(best.width, best.height)) {
+                RLOG("fatal: swapchain recreation failed");
+                return 1;
             }
             char label[96];
             snprintf(label, sizeof(label), "final output %ux%u @ %.3f Hz, swapchain %ux%u", best.width, best.height,
@@ -162,6 +164,17 @@ public:
     }
 
 private:
+    void LogWindowState(const char* when) {
+        try {
+            auto cw = winrt::Windows::UI::Core::CoreWindow::GetForCurrentThread();
+            auto b = cw.Bounds();
+            RLOG("window state (%s): CoreWindow visible=%d bounds %.0fx%.0f, SDL flags 0x%08x", when,
+                 cw.Visible() ? 1 : 0, b.Width, b.Height, static_cast<unsigned>(SDL_GetWindowFlags(m_window)));
+        } catch (...) {
+            RLOG("window state (%s): unavailable", when);
+        }
+    }
+
     void LogSdlDisplays() {
         int n = SDL_GetNumVideoDisplays();
         for (int d = 0; d < n; ++d) {
@@ -231,6 +244,11 @@ private:
         RLOG("fps:   avg per frame: event pump %.2f ms, Present %.2f ms",
              1000.0 * static_cast<double>(m_pumpTicks) / static_cast<double>(f.QuadPart) / frames,
              1000.0 * static_cast<double>(m_presentTicks) / static_cast<double>(f.QuadPart) / frames);
+        uint32_t ok, occ, other;
+        long last;
+        m_renderer.TakePresentStats(ok, occ, other, last);
+        RLOG("fps:   Present results: S_OK=%u OCCLUDED=%u other=%u (last other 0x%08lx)", ok, occ, other,
+             static_cast<unsigned long>(last));
     }
 
     void PumpEvents() {

@@ -21,21 +21,31 @@ class Renderer {
 public:
     bool Init(IUnknown* coreWindow, uint32_t width, uint32_t height);
     bool Resize(uint32_t width, uint32_t height);
+    // Destroys and creates the swapchain again (needed after an HDMI mode change).
+    bool Recreate(uint32_t width, uint32_t height);
     // Clears to the color and presents with vsync. Returns false on a fatal error.
     bool Frame(const float rgba[4]);
     // Present count / refresh count from DXGI frame statistics, if available.
     bool FrameStatistics(uint32_t& presentCount, uint32_t& presentRefreshCount, uint32_t& syncRefreshCount);
+
+    // Present() results since the last call: S_OK count, DXGI_STATUS_OCCLUDED count, other count/last code.
+    void TakePresentStats(uint32_t& ok, uint32_t& occluded, uint32_t& other, long& lastOther);
 
     uint32_t Width() const { return m_width; }
     uint32_t Height() const { return m_height; }
 
 private:
     bool CreateTargets();
+    bool CreateSwapchain(uint32_t width, uint32_t height);
 
     winrt::com_ptr<ID3D11Device> m_device;
     winrt::com_ptr<ID3D11DeviceContext> m_context;
     winrt::com_ptr<IDXGISwapChain1> m_swapchain;
     winrt::com_ptr<ID3D11RenderTargetView> m_rtv;
+    winrt::com_ptr<IDXGIFactory2> m_factory;
+    IUnknown* m_coreWindow = nullptr;
+    uint32_t m_ok = 0, m_occluded = 0, m_other = 0;
+    long m_lastOther = 0;
     uint32_t m_width = 0;
     uint32_t m_height = 0;
 };

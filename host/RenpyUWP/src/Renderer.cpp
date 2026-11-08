@@ -27,9 +27,14 @@ bool Renderer::Init(IUnknown* coreWindow, uint32_t width, uint32_t height) {
     RLOG("adapter: %ls, dedicated video memory %llu MB, shared %llu MB", adesc.Description,
          static_cast<unsigned long long>(adesc.DedicatedVideoMemory >> 20),
          static_cast<unsigned long long>(adesc.SharedSystemMemory >> 20));
-    winrt::com_ptr<IDXGIFactory2> factory;
-    winrt::check_hresult(adapter->GetParent(IID_PPV_ARGS(factory.put())));
+    winrt::check_hresult(adapter->GetParent(IID_PPV_ARGS(m_factory.put())));
+    // At most one queued frame: keeps latency low and makes Present time reflect vsync waits.
+    if (auto dxgi1 = m_device.try_as<IDXGIDevice1>()) dxgi1->SetMaximumFrameLatency(1);
+    m_coreWindow = coreWindow;
+    return CreateSwapchain(width, height);
+}
 
+bool Renderer::CreateSwapchain(uint32_t width, uint32_t height) {
     DXGI_SWAP_CHAIN_DESC1 sd{};
     sd.Width = width;
     sd.Height = height;
@@ -37,9 +42,9 @@ bool Renderer::Init(IUnknown* coreWindow, uint32_t width, uint32_t height) {
     sd.SampleDesc.Count = 1;
     sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     sd.BufferCount = 2;
-    sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+    sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
     sd.Scaling = DXGI_SCALING_STRETCH;
-    hr = factory->CreateSwapChainForCoreWindow(m_device.get(), coreWindow, &sd, nullptr, m_swapchain.put());
+    HRESULT hr = m_factory->CreateSwapChainForCoreWindow(m_device.get(), m_coreWindow, &sd, nullptr, m_swapchain.put());
     if (FAILED(hr)) {
         RLOG("CreateSwapChainForCoreWindow(%ux%u) failed: 0x%08lx", width, height, static_cast<unsigned long>(hr));
         return false;
@@ -57,6 +62,25 @@ bool Renderer::Resize(uint32_t width, uint32_t height) {
         return false;
     }
     return CreateTargets();
+}
+
+bool Renderer::Recreate(uint32_t width, uint32_t height) {
+    m_context->OMSetRenderTargets(0, nullptr, nullptr);
+    m_rtv = nullptr;
+    m_swapchain = nullptr;
+    m_context->ClearState();
+    m_context->Flush();
+    RLOG("recreating swapchain at %ux%u", width, height);
+    return CreateSwapchain(width, height);
+}
+
+void Renderer::TakePresentStats(uint32_t& ok, uint32_t& occluded, uint32_t& other, long& lastOther) {
+    ok = m_ok;
+    occluded = m_occluded;
+    other = m_other;
+    lastOther = m_lastOther;
+    m_ok = m_occluded = m_other = 0;
+    m_lastOther = 0;
 }
 
 bool Renderer::CreateTargets() {
@@ -82,6 +106,14 @@ bool Renderer::Frame(const float rgba[4]) {
     m_context->OMSetRenderTargets(1, rtvs, nullptr);
     m_context->ClearRenderTargetView(m_rtv.get(), rgba);
     HRESULT hr = m_swapchain->Present(1, 0);
+    if (hr == S_OK) {
+        ++m_ok;
+    } else if (hr == DXGI_STATUS_OCCLUDED) {
+        ++m_occluded;
+    } else {
+        ++m_other;
+        m_lastOther = hr;
+    }
     if (FAILED(hr)) {
         RLOG("Present failed: 0x%08lx", static_cast<unsigned long>(hr));
         return false;
