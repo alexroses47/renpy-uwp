@@ -24,7 +24,14 @@ Si el Hito 2 resulta inviable, detente y propón el plan B (contenedor UWP con W
 - Despliegue desde Linux: probar **openappx** (`pip install openappx[sign]`, comando `openappx deploy`). Si falla,
   alternativa: API REST del Windows Device Portal con `curl`, y último recurso la web del Device Portal (manual).
 - KS:RE está instalado sobre la copia de Steam (app 3068300) en `~/.local/share/Steam`. Los datos del juego se
-  copiarán a un USB (exFAT) para la Xbox.
+  copian a un USB para la Xbox.
+- **USB de juegos (layout estándar):** NTFS, etiqueta `RENPY`, ACL de sternserv (Everyone + ALL APPLICATION PACKAGES,
+  Control total) en todos los archivos y carpetas; en la consola aparece como `E:\` (tipo removable). Estructura:
+  ```
+  E:\renpy-uwp-test.txt                  ← archivo de prueba del host
+  E:\renpy\games\<juego>\game\          ← carpeta game/ de cada juego Ren'Py (p. ej. E:\renpy\games\ksre\game\)
+  ```
+  El runtime busca juegos en `<unidad>:\renpy\games\*\game\`. exFAT no se usa (sin ACL; no probado).
 
 ## Reglas no negociables
 
@@ -57,7 +64,7 @@ App UWP (host C++/WinRT, CoreApplication)
  │   SDL2_image, FFmpeg (LGPL: avformat/avcodec/swresample/swscale)
  ├─ ANGLE (OpenGL ES → Direct3D 11) para el renderer GL de Ren'Py
  └─ Datos:
-     ├─ Juego: carpeta en el USB (p. ej. E:\renpy\<juego>\game) o LocalState como alternativa
+     ├─ Juego: carpeta en el USB (E:\renpy\games\<juego>\game\) o LocalState como alternativa
      └─ Partidas y persistentes: LocalState (config.savedir)
 ```
 
