@@ -90,3 +90,23 @@
 - Hito 2 (decisivo): CPython 3.12.8 para UWP x64 embebido en el host. Investigar primero (RESEARCH): PCbuild con
   `WINAPI_FAMILY_APP`, parches de ms-iot/Greentwip, `CreateFileW` → `CreateFile2` (ya visto en el Hito 1), stdlib empaquetada.
   No empezar sin la confirmación del usuario.
+
+## 2026-11-08 — Hito 2 (CPython embebido), sesión 3
+
+**Hecho**
+- Verificada la receta de Kodi (kodi-deps #33, fork `thexai/cpython@4c97e13`) y los PR de gh-152433 (RESEARCH §17–21).
+  Decisión con visto bueno del usuario: base 3.12.11 del fork + serie de parches propia + biblioteca estática.
+- `python/cpython-uwp/`: `CMakeLists.txt` derivado del del fork (PSF), 5 parches (CreateFile2 sin el truco "system",
+  dynload, `st_size`, `_winapi` con `OSError(ENOSYS)`, módulos integrados), `build.ps1`, `make_stdlib_zip.py`; caché en CI.
+- Host: `PythonHost.cpp` (hilo de 8 MB, `PyPreConfig` aislado con `utf8_mode`, `PyConfig` aislado, rutas relativas como Kodi),
+  `python/smoke.py`. Auditoría `dumpbin /imports` en CI.
+- 7 iteraciones de CI (PowerShell partía `-D...=10.0.22621.0`; macros del núcleo rompían expat; `pyconfig.h` para expat;
+  `/sdl` y C4703; `in6addr_any` → `ws2_32.lib` aceptado; prueba de recursión mal planteada).
+- **En la Xbox: `SMOKE DONE: 0 unexpected failure(s)`** (RESEARCH §23).
+- `tools/dump-renpy-modules.sh` corregido (callbacks verificados en 8.5.3, protegidos, 4 momentos de volcado) y probado con el
+  SDK oficial de Ren'Py 8.5.3 (`the_question`, guardar/cargar/salir automáticos).
+
+**Pendiente para cerrar el Hito 2**
+- Usuario: volcado de módulos de KS:RE con `tools/dump-renpy-modules.sh` (fuente de verdad de la lista).
+- Usuario: comprobar lo pendiente del Hito 1 (volver desde Inicio reaplica 4K/120; View y Menu).
+- Confirmación del usuario.

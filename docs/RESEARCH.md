@@ -547,3 +547,26 @@ No hay backport a 3.12 (rama solo de seguridad). Los cambios se aplican a mano.
   Kodi enlaza `ws2_32.lib` en el mismo build y está probado en Xbox.
 - Problemas de build resueltos: macros `PREFIX/VERSION/VPATH` del núcleo rompen expat (bibliotecas separadas); `expat_config.h`
   necesita `pyconfig.h`; `/sdl` por defecto en proyectos UWP convierte C4703 en error (`/sdl-` como el núcleo).
+
+## 23. Hito 2 en la consola (build 0.0.23, 2026-11-08)
+
+`LocalState\python.log` (smoke.py), resultado: **`SMOKE DONE: 0 unexpected failure(s)`**.
+- Intérprete: `3.12.11 ... [MSC v.1944 64 bit (AMD64)]`, `sys.platform win32`, `utf8_mode 1`, `isolated 1`, fs encoding utf-8,
+  hilo de **8192 KB** de stack. `sys.path = ['python\\python312.zip', 'python']`; `cwd` = carpeta de instalación
+  (`S:\Program Files\WindowsApps\RenpyUWP_...`), LocalState = `Q:\Users\UserMgr1\AppData\Local\Packages\RenpyUWP_q0s6jq3s4ng3r\LocalState`.
+- Módulos C de Ren'Py: **42/48** (fallan solo los excluidos: `_bz2 _lzma _ctypes _ssl _hashlib`, y `winreg` que el fork no
+  registra en APP). Stdlib de Ren'Py: **168/174** (fallan `bz2 lzma ctypes ssl` por esas exclusiones y `pty tty` que tampoco
+  existen en Windows de escritorio).
+- Archivos: listado/lectura en `E:\renpy\games\ksre\game` (`st_size` correcto tras el parche 0003; cabecera `RPA-3.0` de
+  `images.rpa`, 623 MB), escritura/lectura UTF-8 y borrado en LocalState, lectura de archivos del paquete **por ruta relativa
+  y absoluta**.
+- Hilos: 8 hilos OK. Recursión: 900 con el límite por defecto (Ren'Py no lo cambia), 15000 con límite 20000, recursión C de
+  json/pickle a profundidad 1400.
+- Hora: `time.tzname = ('Pacific Standard Time', ...)` (zona configurada en la consola), `datetime.now().astimezone()` con offset.
+  `time.get_clock_info('monotonic').resolution` = 1.0 porque el fork omite `GetSystemTimeAdjustment` en APP (solo informativo).
+- `subprocess.run()` → `OSError [Errno 40] _winapi.CreateProcess: child processes are not available in a UWP app container`
+  (parche 0004; errno 40 = ENOSYS en el CRT de MSVC).
+- `platform` → `('Windows', '11', 'AMD64')`, `os.cpu_count()` = 8, `locale.getpreferredencoding()` = utf-8.
+- DLLs importadas por `RenpyUWP.exe`: API sets `api-ms-win-core-*`/`api-ms-win-crt-*` más `bcrypt d3d11 OLEAUT32 RPCRT4 WS2_32
+  VCRUNTIME140(_1)_APP MSVCP140_APP SDL2`; las que no son API sets llegan por `WindowsApp.lib` (superficie permitida para UWP).
+- Dato para el Hito 4: la carpeta `game/` de KS:RE trae `python-packages/` (paquetes Python propios del juego) además de 6 `.rpa`.
