@@ -47,6 +47,11 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
 
   <PropertyGroup>
+    <!-- SDL2 install prefix produced by deps/sdl2/build.ps1 (CI passes /p:SdlDir=...). -->
+    <SdlDir Condition="'$(SdlDir)'==''">$(MSBuildThisFileDirectory)..\..\out\deps\sdl2</SdlDir>
+  </PropertyGroup>
+
+  <PropertyGroup>
     <!-- Packaging: sideload .msix, no bundle. Certificate is passed by CI on the command line. -->
     <GenerateAppxPackageOnBuild>true</GenerateAppxPackageOnBuild>
     <AppxBundle>Never</AppxBundle>
@@ -68,13 +73,14 @@
       <AdditionalOptions>/bigobj /utf-8 %(AdditionalOptions)</AdditionalOptions>
       <PreprocessorDefinitions>NOMINMAX;WIN32_LEAN_AND_MEAN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <!-- C++/WinRT projection headers shipped with the Windows SDK (no NuGet needed). -->
-      <AdditionalIncludeDirectories>$(WindowsSdkDir)Include\$(WindowsTargetPlatformVersion)\cppwinrt;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SdlDir)\include\SDL2;$(WindowsSdkDir)Include\$(WindowsTargetPlatformVersion)\cppwinrt;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateWindowsMetadata>false</GenerateWindowsMetadata>
-      <AdditionalDependencies>WindowsApp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SdlDir)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>SDL2.lib;WindowsApp.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
@@ -97,11 +103,23 @@
   </ItemDefinitionGroup>
 
   <ItemGroup>
-    <ClCompile Include="src\App.cpp" />
+    <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\Log.cpp" />
+    <ClCompile Include="src\Renderer.cpp" />
+    <ClCompile Include="src\DisplayProbe.cpp" />
+    <ClCompile Include="src\StorageProbe.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Log.h" />
+    <ClInclude Include="src\Renderer.h" />
+    <ClInclude Include="src\DisplayProbe.h" />
+    <ClInclude Include="src\StorageProbe.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Copied next to the project by CI (git-ignored); packaged at the package root. -->
+    <None Include="SDL2.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <AppxManifest Include="Package.appxmanifest">

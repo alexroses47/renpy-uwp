@@ -48,6 +48,20 @@
         <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
         <uap:SplashScreen Image="Assets\SplashScreen.png" BackgroundColor="#202020" />
       </uap:VisualElements>
+      <Extensions>
+        <!-- Lets KnownFolders.RemovableDevices (removableStorage) enumerate these types on the USB drive. -->
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="renpydata">
+            <uap:DisplayName>Ren'Py game data</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.txt</uap:FileType>
+              <uap:FileType>.rpa</uap:FileType>
+              <uap:FileType>.rpy</uap:FileType>
+              <uap:FileType>.rpyc</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+      </Extensions>
     </Application>
   </Applications>
 

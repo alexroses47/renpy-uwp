@@ -1,0 +1,65 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+#pragma once
+
+#include <windows.h>
+
+#include <d3d11.h>
+#include <dxgi1_2.h>
+
+#include <cstdint>
+
+#include <winrt/base.h>
+
+namespace renpyuwp {
+
+// D3D11 swapchain on the CoreWindow with an explicit size (independent of the
+// 1920x1080 DIP size the CoreWindow reports on Xbox).
+class Renderer {
+public:
+    bool Init(IUnknown* coreWindow, uint32_t width, uint32_t height);
+    bool Resize(uint32_t width, uint32_t height);
+    // Clears to the color and presents with vsync. Returns false on a fatal error.
+    bool Frame(const float rgba[4]);
+    // Present count / refresh count from DXGI frame statistics, if available.
+    bool FrameStatistics(uint32_t& presentCount, uint32_t& presentRefreshCount, uint32_t& syncRefreshCount);
+
+    uint32_t Width() const { return m_width; }
+    uint32_t Height() const { return m_height; }
+
+private:
+    bool CreateTargets();
+
+    winrt::com_ptr<ID3D11Device> m_device;
+    winrt::com_ptr<ID3D11DeviceContext> m_context;
+    winrt::com_ptr<IDXGISwapChain1> m_swapchain;
+    winrt::com_ptr<ID3D11RenderTargetView> m_rtv;
+    uint32_t m_width = 0;
+    uint32_t m_height = 0;
+};
+
+// Frame timing over a measurement window (QueryPerformanceCounter based).
+class FpsMeter {
+public:
+    void Start();
+    void Tick();
+    double Seconds() const;
+    uint64_t Frames() const { return m_frames; }
+    double Fps() const;
+    double MinMs() const { return m_minMs; }
+    double MaxMs() const { return m_maxMs; }
+    // Frames whose interval exceeded 1.5x the average (hitches).
+    uint64_t Hitches() const;
+
+private:
+    LARGE_INTEGER m_freq{}, m_start{}, m_last{};
+    uint64_t m_frames = 0;
+    double m_minMs = 1e9, m_maxMs = 0;
+    static constexpr int kMaxSamples = 4096;
+    float m_samples[kMaxSamples]{};
+    int m_count = 0;
+};
+
+}  // namespace renpyuwp
