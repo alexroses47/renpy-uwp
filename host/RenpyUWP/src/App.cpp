@@ -17,6 +17,7 @@
 #include <winrt/Windows.ApplicationModel.Core.h>
 #include <winrt/Windows.ApplicationModel.h>
 #include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Graphics.Display.h>
 #include <winrt/Windows.System.Profile.h>
 #include <winrt/Windows.UI.Core.h>
 
@@ -109,9 +110,22 @@ private:
         com_ptr<IDXGIFactory2> factory;
         check_hresult(adapter->GetParent(IID_PPV_ARGS(factory.put())));
 
+        // Explicit size: with 0x0 the swapchain came out 8x8 on Xbox (window not sized yet).
+        // CoreWindow size in pixels = DIPs * RawPixelsPerViewPixel (1080p on Xbox; 4K comes later).
+        double scale = 1.0;
+        try {
+            scale = winrt::Windows::Graphics::Display::DisplayInformation::GetForCurrentView().RawPixelsPerViewPixel();
+        } catch (...) {
+        }
+        auto bounds = m_window.Bounds();
         DXGI_SWAP_CHAIN_DESC1 sd{};
-        sd.Width = 0;  // use CoreWindow size (1080p on Xbox; 4K handled in a later milestone)
-        sd.Height = 0;
+        sd.Width = static_cast<UINT>(bounds.Width * scale + 0.5);
+        sd.Height = static_cast<UINT>(bounds.Height * scale + 0.5);
+        if (sd.Width == 0 || sd.Height == 0) {
+            sd.Width = 1920;
+            sd.Height = 1080;
+        }
+        RLOG("requesting swapchain %ux%u (scale %.2f)", sd.Width, sd.Height, scale);
         sd.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
         sd.SampleDesc.Count = 1;
         sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
