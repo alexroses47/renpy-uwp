@@ -57,7 +57,7 @@ Invoke-Checked 'tar zlib' { tar -xzf $zlibTar -C $WorkDir }
 $hostPy = (Get-Command $HostPython).Source
 Invoke-Checked 'cmake configure' {
     cmake -S $src -B $build -G 'Visual Studio 17 2022' -A x64 `
-        -DCMAKE_SYSTEM_NAME=WindowsStore -DCMAKE_SYSTEM_VERSION=10.0.22621.0 `
+        '-DCMAKE_SYSTEM_NAME=WindowsStore' '-DCMAKE_SYSTEM_VERSION=10.0.22621.0' `
         "-DPYTHON_FOR_BUILD=$hostPy" "-DZLIB_SOURCE_DIR=$zlibSrc" "-DCMAKE_INSTALL_PREFIX=$Prefix"
 }
 Invoke-Checked 'cmake build' { cmake --build $build --config $Configuration --parallel -- /nologo /v:minimal }
