@@ -33,7 +33,7 @@ add_library(zlibstatic STATIC
 )
 target_include_directories(zlibstatic PUBLIC ${ZLIB_SOURCE_DIR})
 target_compile_definitions(zlibstatic PRIVATE _CRT_SECURE_NO_DEPRECATE _CRT_NONSTDC_NO_DEPRECATE)
-target_compile_options(zlibstatic PRIVATE /we4013)
+target_compile_options(zlibstatic PRIVATE /sdl- /we4013)
 
 
 add_custom_target(gen.frozen
@@ -377,7 +377,7 @@ add_library(expat_uwp STATIC
   Modules/expat/xmltok.c
 )
 target_compile_definitions(expat_uwp PRIVATE XML_STATIC _CRT_SECURE_NO_WARNINGS)
-target_compile_options(expat_uwp PRIVATE /we4013)
+target_compile_options(expat_uwp PRIVATE /sdl- /we4013)
 # CPython's expat_config.h includes pyconfig.h (PC/), which needs Include/ for pyport.h etc.
 target_include_directories(expat_uwp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/PC ${CMAKE_CURRENT_SOURCE_DIR}/Include)
 
@@ -400,7 +400,7 @@ add_library(mpdec_uwp STATIC
 # CONFIG_64 + ANSI: portable C, no MASM helpers (same choice as the fork for x64).
 target_compile_definitions(mpdec_uwp PRIVATE CONFIG_64 ANSI _CRT_SECURE_NO_WARNINGS)
 target_include_directories(mpdec_uwp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Modules/_decimal/libmpdec ${CMAKE_CURRENT_SOURCE_DIR}/PC ${CMAKE_CURRENT_SOURCE_DIR}/Include)
-target_compile_options(mpdec_uwp PRIVATE /we4013)
+target_compile_options(mpdec_uwp PRIVATE /sdl- /we4013)
 
 set(DECIMAL_SOURCES Modules/_decimal/_decimal.c)
 # libmpdec has an io.h that must not shadow the CRT one: include path per source only.
