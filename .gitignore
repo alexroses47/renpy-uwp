@@ -1,0 +1,122 @@
+# =====================================================================
+# GAME RESOURCES MUST NEVER BE COMMITTED.
+# Katawa Shoujo: Re-Engineered assets are CC BY-NC-ND; this repo only holds
+# the runtime. ci/check-no-game-assets.sh enforces this in CI as well.
+# =====================================================================
+
+# Ren'Py game data and scripts
+*.rpa
+*.rpi
+*.rpy
+*.rpyc
+*.rpym
+*.rpymc
+*.rpyb
+*.rpu
+**/game/
+**/saves/
+persistent
+log.txt
+traceback.txt
+errors.txt
+
+# Media (blocked everywhere; host assets are allow-listed below)
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.avif
+*.gif
+*.bmp
+*.tga
+*.dds
+*.svg
+*.ogg
+*.opus
+*.oga
+*.mp3
+*.wav
+*.flac
+*.m4a
+*.webm
+*.mkv
+*.ogv
+*.mp4
+*.m4v
+*.avi
+*.mpg
+*.mpeg
+*.ttf
+*.otf
+*.ttc
+*.woff
+*.woff2
+*.moc3
+*.model3.json
+
+# Archives that could carry game data
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.*
+*.tgz
+
+# Known game folder names
+**/Katawa*/
+**/katawa*/
+**/KSRE*/
+**/ks-re*/
+**/the_question/
+**/tutorial/
+
+# Allow-list: our own generated placeholder logos for the UWP package
+!host/RenpyUWP/Assets/
+!host/RenpyUWP/Assets/*.png
+
+# =====================================================================
+# Secrets / signing material
+# =====================================================================
+*.pfx
+*.p12
+*.cer
+*.crt
+*.pem
+*.key
+*.snk
+.env
+*.secret
+
+# =====================================================================
+# Build outputs and local tooling
+# =====================================================================
+/out/
+/dist/
+/build/
+/logs/
+/.cache/
+**/AppPackages/
+**/BundleArtifacts/
+**/x64/
+**/ARM64/
+**/Debug/
+**/Release/
+*.msix
+*.msixbundle
+*.appx
+*.appxbundle
+*.appxsym
+*.pdb
+*.obj
+*.ilk
+*.exe
+*.dll
+*.lib
+*.pyd
+*.vcxproj.user
+.vs/
+Generated Files/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
