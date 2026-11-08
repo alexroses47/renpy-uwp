@@ -4,6 +4,18 @@ This repository contains only the **runtime** (a UWP host for Ren'Py 8). It does
 contain, assets or scripts of any game. Games, including *Katawa Shoujo: Re-Engineered* (art/audio/text under
 CC BY-NC-ND 4.0, code under MPL-2.0), are provided by the user from their own copy.
 
+## Licensing of this project vs. third-party code
+
+- **Original code of this runtime** (files carrying the MPL-2.0 Exhibit A header): Mozilla Public License 2.0,
+  see `LICENSE`.
+- **Third-party code keeps its original license.** This applies to the components listed below, to any copy of
+  their sources fetched or vendored by the build, and to **our patches and modifications to third-party files**,
+  which are distributed under the license of the file they modify. For example:
+  Ren'Py → MIT; CPython → PSF-2.0; SDL2 / SDL2_image → zlib; FFmpeg → LGPL-2.1-or-later;
+  FriBidi → LGPL-2.1-or-later; FreeType → FTL; HarfBuzz → MIT; ANGLE → BSD-3-Clause; zlib → zlib; libpng → libpng.
+  The MPL-2.0 header is **not** added to third-party files or patches.
+- Patches live under `deps/<component>/patches/` (and equivalents); each directory states the license that applies.
+
 ## Components currently redistributed in the package
 
 | Component | Version | License | How it is used |

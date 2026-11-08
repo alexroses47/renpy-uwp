@@ -28,3 +28,15 @@ ci/fetch-logs.sh      # downloads LocalState\renpy-uwp.log
 ```
 
 See `docs/SIGNING.md` for the one-time signing certificate setup and `THIRD_PARTY_NOTICES.md` for licenses.
+
+## License
+
+The original code of this runtime (host, CI scripts, build recipes written for this project) is licensed under the
+**Mozilla Public License 2.0** — see [`LICENSE`](LICENSE). Each such source file carries the MPL-2.0 Exhibit A header.
+
+**Third-party code keeps its original license**, and so do our patches to third-party files: a patch to Ren'Py is
+MIT, a patch to CPython is PSF-2.0, a patch to SDL2 is zlib, a patch to FFmpeg is LGPL-2.1-or-later, and so on.
+MPL-2.0 does not apply to them. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+Games are not part of this project and keep their own licenses (e.g. *Katawa Shoujo: Re-Engineered*: CC BY-NC-ND 4.0
+for assets, MPL-2.0 for code); no game files are distributed here.

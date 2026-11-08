@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 // Milestone 0 host: proves the build -> sign -> deploy -> log chain.
 // CoreApplication + D3D11 swapchain cleared to a fixed color, log in LocalState.
 // SDL2 replaces the rendering/input part in milestone 1.

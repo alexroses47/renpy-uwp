@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
+  This Source Code Form is subject to the terms of the Mozilla Public
+  License, v. 2.0. If a copy of the MPL was not distributed with this
+  file, You can obtain one at https://mozilla.org/MPL/2.0/.
+-->
+<!--
   Publisher MUST equal the CN of the signing certificate (UWP_CERT_PFX_BASE64 secret).
   Version is overwritten by CI (0.0.<run_number>.0).
 -->

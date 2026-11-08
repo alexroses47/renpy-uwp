@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 # Fails if any tracked file looks like game content (Ren'Py scripts/archives, media, fonts)
 # outside the allow-list. Runs in CI and can be used as a local pre-commit check.
 set -euo pipefail
