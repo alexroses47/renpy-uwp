@@ -5,7 +5,8 @@
 #   - builds a STATIC library (python312.lib) with the extension modules built in, instead of
 #     python312.dll + python3.dll + .pyd files;
 #   - no external dependency packages: zlib is compiled from source (ZLIB_SOURCE_DIR), expat and
-#     libmpdec are the copies vendored in the CPython tree; _ssl/_hashlib/_bz2/_lzma/_sqlite3/
+#     libmpdec are the copies vendored in the CPython tree, each in its own static library
+#     (the core's PREFIX/VERSION/VPATH macros break expat); _ssl/_hashlib/_bz2/_lzma/_sqlite3/
 #     _ctypes/_uuid are not built (milestone 2);
 #   - the frozen/deepfreeze generators run with PYTHON_FOR_BUILD (a host Python 3.12) instead of
 #     a NuGet download;
@@ -368,8 +369,17 @@ set(python_headers
     Python/thread_nt.h
 )
 
-set(DECIMAL_SOURCES
-  Modules/_decimal/_decimal.c
+# expat and libmpdec are separate static libraries: the core target defines PREFIX, VERSION and
+# VPATH for getpath.c, and those macros break expat (typedef ... PREFIX) and could clash in libmpdec.
+add_library(expat_uwp STATIC
+  Modules/expat/xmlparse.c
+  Modules/expat/xmlrole.c
+  Modules/expat/xmltok.c
+)
+target_compile_definitions(expat_uwp PRIVATE XML_STATIC _CRT_SECURE_NO_WARNINGS)
+target_compile_options(expat_uwp PRIVATE /we4013)
+
+add_library(mpdec_uwp STATIC
   Modules/_decimal/libmpdec/basearith.c
   Modules/_decimal/libmpdec/constants.c
   Modules/_decimal/libmpdec/context.c
@@ -385,14 +395,18 @@ set(DECIMAL_SOURCES
   Modules/_decimal/libmpdec/sixstep.c
   Modules/_decimal/libmpdec/transpose.c
 )
-# libmpdec has an io.h that must not shadow the CRT one: include path per source only.
 # CONFIG_64 + ANSI: portable C, no MASM helpers (same choice as the fork for x64).
+target_compile_definitions(mpdec_uwp PRIVATE CONFIG_64 ANSI _CRT_SECURE_NO_WARNINGS)
+target_include_directories(mpdec_uwp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Modules/_decimal/libmpdec)
+target_compile_options(mpdec_uwp PRIVATE /we4013)
+
+set(DECIMAL_SOURCES Modules/_decimal/_decimal.c)
+# libmpdec has an io.h that must not shadow the CRT one: include path per source only.
 set_source_files_properties(${DECIMAL_SOURCES} PROPERTIES
   INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/Modules/_decimal/libmpdec
   COMPILE_DEFINITIONS "CONFIG_64;ANSI;_CRT_SECURE_NO_WARNINGS")
 set_source_files_properties(
   Modules/pyexpat.c Modules/_elementtree.c
-  Modules/expat/xmlparse.c Modules/expat/xmlrole.c Modules/expat/xmltok.c
   PROPERTIES
   INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/Modules/expat
   COMPILE_DEFINITIONS "XML_STATIC;PYEXPAT_EXPORTS;_CRT_SECURE_NO_WARNINGS")
@@ -610,9 +624,6 @@ add_library(python STATIC
   Modules/_zoneinfo.c
   Modules/pyexpat.c
   Modules/_elementtree.c
-  Modules/expat/xmlparse.c
-  Modules/expat/xmlrole.c
-  Modules/expat/xmltok.c
   ${DECIMAL_SOURCES}
 )
 
@@ -659,13 +670,13 @@ set_target_properties(python PROPERTIES
   COMPILE_PDB_NAME ${PY_SHARED_LIB_NAME}
 )
 
-target_link_libraries(python PUBLIC zlibstatic)
+target_link_libraries(python PUBLIC zlibstatic expat_uwp mpdec_uwp)
 
 add_dependencies(gen.deepfreeze gen.frozen)
 add_dependencies(python gen.deepfreeze)
 
 
-install(TARGETS python zlibstatic
+install(TARGETS python zlibstatic expat_uwp mpdec_uwp
   ARCHIVE DESTINATION lib
 )
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/Include/

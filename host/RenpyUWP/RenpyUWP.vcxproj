@@ -83,7 +83,7 @@
       <GenerateWindowsMetadata>false</GenerateWindowsMetadata>
       <AdditionalLibraryDirectories>$(PythonDir)\lib;$(SdlDir)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <!-- Strict mode: only WindowsApp.lib for system APIs (anything else must be justified in RESEARCH.md). -->
-      <AdditionalDependencies>python312.lib;zlibstatic.lib;SDL2.lib;WindowsApp.lib</AdditionalDependencies>
+      <AdditionalDependencies>python312.lib;zlibstatic.lib;expat_uwp.lib;mpdec_uwp.lib;SDL2.lib;WindowsApp.lib</AdditionalDependencies>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
     </Link>
   </ItemDefinitionGroup>

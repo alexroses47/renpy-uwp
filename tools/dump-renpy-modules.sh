@@ -32,39 +32,78 @@ trap cleanup EXIT
 
 cat >"$hook" <<'RPY'
 # Temporary file written by renpy-uwp tools/dump-renpy-modules.sh. Safe to delete.
-init -1999 python:
-    import sys as _uwp_sys, json as _uwp_json, os as _uwp_os, importlib.machinery as _uwp_mach
+# Runs at init 999 (after renpy/common, which defines config.after_load_callbacks) inside
+# "python hide", so nothing is added to the store or to save files. Every callback registration
+# is guarded: an unknown config variable can never stop the game. Verified against Ren'Py
+# 8.5.3.26051504 (renpy/config.py, renpy/common/00start.rpy).
+init 999 python hide:
+    import sys, os, json, atexit, types
+    import importlib.machinery as mach
 
-    _uwp_seen = {}
+    state = sys.modules.get("_renpy_uwp_dump")
+    if state is None:
+        state = types.ModuleType("_renpy_uwp_dump")
+        state.seen = {}
+        state.events = []
+        state.registered = []
+        state.failed = []
+        state.first_interaction = False
+        sys.modules["_renpy_uwp_dump"] = state
 
-    def _uwp_kind(name, mod):
-        if name in _uwp_sys.builtin_module_names:
+    path = os.environ.get("RENPY_UWP_DUMP") or os.path.expanduser("~/renpy-uwp-modules.raw.json")
+
+    def kind(name, mod):
+        if name in sys.builtin_module_names:
             return "builtin"
         f = getattr(mod, "__file__", None) or ""
-        if any(f.endswith(s) for s in _uwp_mach.EXTENSION_SUFFIXES):
+        if f.endswith(tuple(mach.EXTENSION_SUFFIXES)):
             return "extension"
-        if f:
-            return "python"
-        return "other"
+        return "python" if f else "other"
 
-    def _uwp_dump(reason):
-        for k, m in list(_uwp_sys.modules.items()):
-            if k not in _uwp_seen:
-                _uwp_seen[k] = {"kind": _uwp_kind(k, m), "file": getattr(m, "__file__", None), "first_seen": reason}
-        data = {
-            "python": _uwp_sys.version,
-            "renpy": renpy.version(),
-            "builtin_module_names": sorted(_uwp_sys.builtin_module_names),
-            "modules": dict(sorted(_uwp_seen.items())),
-        }
-        path = _uwp_os.environ.get("RENPY_UWP_DUMP", _uwp_os.path.expanduser("~/renpy-uwp-modules.raw.json"))
-        with open(path, "w") as f:
-            _uwp_json.dump(data, f, indent=1)
+    def dump(reason):
+        try:
+            for k, m in list(sys.modules.items()):
+                if k not in state.seen:
+                    state.seen[k] = {"kind": kind(k, m), "first_seen": reason}
+            state.events.append(reason)
+            data = {
+                "python": sys.version,
+                "renpy": renpy.version(),
+                "events": state.events,
+                "registered": state.registered,
+                "registration_failures": state.failed,
+                "builtin_module_names": sorted(sys.builtin_module_names),
+                "modules": dict(sorted(state.seen.items())),
+            }
+            tmp = path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(data, f, indent=1)
+            os.replace(tmp, path)
+        except Exception:
+            pass
 
-    config.start_callbacks.append(lambda: _uwp_dump("start"))
-    config.after_load_callbacks.append(lambda: _uwp_dump("after_load"))
-    config.quit_callbacks.append(lambda: _uwp_dump("quit"))
-    config.periodic_callbacks.append(lambda: (_uwp_dump("periodic") if renpy.get_game_runtime() % 10 < 0.05 else None))
+    def register(name, fn):
+        try:
+            getattr(renpy.config, name).append(fn)
+            state.registered.append(name)
+        except Exception as e:
+            state.failed.append("%s: %s" % (name, e))
+
+    def first_interaction():
+        if not state.first_interaction:
+            state.first_interaction = True
+            dump("first_interaction")
+
+    register("start_interact_callbacks", first_interaction)
+    register("after_load_callbacks", lambda: dump("after_load"))
+    register("quit_callbacks", lambda: dump("quit"))
+    register("at_exit_callbacks", lambda: dump("at_exit"))
+    try:
+        atexit.register(dump, "atexit")
+        state.registered.append("atexit")
+    except Exception as e:
+        state.failed.append("atexit: %s" % e)
+    dump("end_of_init")
 RPY
 
 launcher="$(find "$game_dir" -maxdepth 1 -name '*.sh' | head -n1 || true)"
@@ -89,6 +128,9 @@ mods = data["modules"]
 summary = {
     "python": data["python"],
     "renpy": data["renpy"],
+    "events": data.get("events", []),
+    "registered": data.get("registered", []),
+    "registration_failures": data.get("registration_failures", []),
     "builtin_module_names": data["builtin_module_names"],
     "modules": {k: v["kind"] for k, v in mods.items()},
 }
@@ -97,6 +139,9 @@ kinds = {}
 for v in summary["modules"].values():
     kinds[v] = kinds.get(v, 0) + 1
 print(f"{len(mods)} modules seen: {kinds}")
+print("dump events:", ", ".join(summary["events"]))
+if summary["registration_failures"]:
+    print("callbacks not registered:", summary["registration_failures"])
 print("extension modules:", ", ".join(k for k, v in summary["modules"].items() if v == "extension"))
 PY
 echo "Written: $out"
