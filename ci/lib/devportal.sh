@@ -86,8 +86,12 @@ name = sys.argv[1]
 pkgs = json.load(sys.stdin).get("InstalledPackages", [])
 # On Xbox, "Name" holds the display name, so match on the identity prefix of the full name.
 match = [p for p in pkgs if p.get("PackageFullName", "").split("_")[0] == name]
+# During an upgrade the old and new versions can be listed together: take the newest.
+def ver(p):
+    v = p.get("Version", {})
+    return tuple(v.get(k, 0) for k in ("Major", "Minor", "Build", "Revision"))
 if match:
-    print(match[0]["PackageFullName"])
+    print(max(match, key=ver)["PackageFullName"])
 ' "$name"
 }
 
