@@ -322,3 +322,26 @@ al suspender por si acaso).
   se registra para saber si la app corre como App (~1 GB) o Game (~5 GB).
 - TV Samsung S90D: el puerto HDMI usado debe tener **Input Signal Plus** activado para aceptar 4K a 120 Hz (ajuste de
   Samsung por puerto). Pendiente de confirmar por el usuario.
+
+## 14. Resultados en la consola (Hito 1, 2026-11-08, builds 0.0.8–0.0.10)
+
+- **Tipo Game**: `MemoryManager::AppMemoryUsageLimit` = **5120 MB** sin tocar Dev Home → `expandedResources` basta en Dev Mode.
+- **Mando**: SDL 2.0.20 (WGI) detecta "Xbox One Game Controller" al arrancar.
+- **Unidades** vistas por la app (sin USB): `C: D: G: J: K: L: M: N: O: Q: S: T: U: V: X: Y:`. Solo **`D:\`** es accesible
+  (NTFS, 5 GB, carpetas `DevelopmentFiles`, `Drives`, `Temp`, `Titles`); el resto da error 5 (acceso denegado) o 3.
+  En `D:\` funcionan **igual** `FindFirstFileExW` normal y `FindFirstFileExFromAppW`. `KnownFolders.RemovableDevices`: 0 carpetas.
+- **`CreateFileW` no está declarado con `WINAPI_FAMILY_APP`** (error C3861): solo `CreateFile2`. Relevante para CPython (Hito 2).
+- **HDMI** (TV Samsung S90D): la consola ofrece 16 modos, incluidos **3840×2160 @ 119.880 Hz** (RGB 8/10 bit e YCC420 8/10/12 bit),
+  3840×2160 @ 59.94/50/23.976, 1920×1080 @ 119.88/59.94/50/23.976, 1280×720 @ 50. **No hay 2560×1440.** HDR no se anuncia en
+  ningún modo (`hdr10=0`) → probablemente HDR desactivado en los ajustes de la consola (no confirmado).
+- `RequestSetCurrentDisplayModeAsync(mode, HdmiDisplayHdrOption::EotfSdr)` → **E_INVALIDARG (0x80070057)** para cualquier modo.
+  Con **`HdmiDisplayHdrOption::None`** (como hace Kodi, `xbmc/windowing/win10/WinSystemWin10.cpp`) → **`true`**, y
+  `GetCurrentDisplayMode()` confirma **3840×2160 @ 119.880 Hz RGB 8 bit**. La CoreWindow sigue en 1920×1080 DIPs; el
+  swapchain se crea a 3840×2160 sin error. No hace falta ninguna capacidad en el manifiesto.
+- **Problema abierto — fps**: a 1080p60 el host da ~40 fps (`Present` medio 24.5 ms, con pausas de ~500 ms al inicio).
+  Tras pasar a 4K120, **cada `Present` tarda ~2000 ms** (S_OK, no OCCLUDED) de forma persistente, aun recreando el swapchain
+  (FLIP_DISCARD, latencia 1). En la build 0.0.8 pasó lo mismo **sin** cambio de modo (ventana inicialmente invisible).
+  2 s parece un timeout de DXGI cuando el compositor no consume frames (sin vsync, salida no mostrada o app sin primer plano).
+  Pendiente: observación del usuario en la TV y prueba lanzando desde Dev Home (no por Device Portal).
+- Despliegue: actualizar con la versión anterior en ejecución deja la instalación "en curso" (HTTP 409 "Another deployment
+  is running") hasta que la app se cierra → `ci/deploy.sh` ahora detiene la app antes de instalar.

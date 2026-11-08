@@ -34,3 +34,23 @@
 - Hito 1: SDL2 2.0.20 WinRT + mando (A/B cambian el color), más dos pruebas pedidas por el usuario:
   acceso al USB desde C++ (unidades, listado de la raíz y lectura de `renpy-uwp-test.txt`) y salida HDMI
   (modos disponibles, cambio a 3840x2160 a 120 Hz, swapchain a la resolución real, fps medidos).
+
+## 2026-11-08 — Hito 1 (SDL2 + mando + USB + HDMI), sesión 2
+
+**Hecho**
+- Hito 0 cerrado (tag `hito-0`). `CLAUDE.md`: requisito 3840x2160 a 120 Hz (TV Samsung S90D, HDMI 2.1) y criterio del Hito 5.
+- Investigación en `docs/RESEARCH.md` §11–13; resultados en consola en §14.
+- `deps/sdl2/build.ps1`: SDL2 2.0.20 (mismo tarball que renpy-build, SHA-256 verificado) con `VisualC-WinRT/SDL-UWP.vcxproj`,
+  cacheado en CI con `actions/cache`.
+- Host: SDL2 (ventana, eventos, mando: A/B color, X fps, Y prueba de USB, View modo por defecto, Menu reintenta 4K120),
+  swapchain D3D11 propio de tamaño explícito, prueba de almacenamiento (Win32 vs FromApp vs WinRT) y prueba HDMI.
+- Verificado en consola: tipo Game (5120 MB), mando detectado, `D:\` accesible, 4K a 119.88 Hz se activa con `HdrOption::None`.
+
+**Falló / abierto**
+- `EotfSdr` → E_INVALIDARG (resuelto con `None`).
+- `Present` se bloquea ~2 s por frame tras el cambio de modo (y en un arranque sin cambio de modo). Sin explicar todavía.
+- USB todavía no probado (el usuario debe prepararlo en NTFS con el ACL de ALL APPLICATION PACKAGES).
+
+**Siguiente paso**
+- Usuario: preparar el USB, abrir la app desde Dev Home y describir lo que ve en la TV (color, cambios con A/B, pantalla
+  en negro tras el cambio a 4K120, efecto de View/Menu). Analizar el log con `ci/fetch-logs.sh`.
