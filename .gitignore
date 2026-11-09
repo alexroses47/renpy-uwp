@@ -73,6 +73,15 @@ errors.txt
 # Allow-list: our own generated placeholder logos for the UWP package
 !host/RenpyUWP/Assets/
 !host/RenpyUWP/Assets/*.png
+# Allow-list: the IsroTaxo menu (our own small Ren'Py game) and the project logo
+!host/RenpyUWP/menu/
+!host/RenpyUWP/menu/game/
+!host/RenpyUWP/menu/game/*.rpy
+!host/RenpyUWP/menu/game/images/
+!host/RenpyUWP/menu/game/images/logo.png
+!host/RenpyUWP/menu/game/images/flower.png
+!host/branding/
+!host/branding/isrotaxo-logo.png
 
 # =====================================================================
 # Secrets / signing material

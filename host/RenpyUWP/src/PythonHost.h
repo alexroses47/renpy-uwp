@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <string>
 
 // Embedded CPython (static python312.lib + renpy_static.lib built-in modules).
@@ -15,5 +16,9 @@ namespace renpyuwp::python {
 // Returns the number of entries that failed or returned non-zero.
 int RunBlocking(const std::wstring& localState, const std::wstring& installDir,
                 const char* const* entries, int count);
+
+// Set by _renpy_uwp.request_restart() (BenchModule.cpp): the IsroTaxo menu chose a game, or a game
+// finished and the menu should come back. The host restarts the app after Python returns.
+extern std::atomic<bool> g_restartRequested;
 
 }  // namespace renpyuwp::python

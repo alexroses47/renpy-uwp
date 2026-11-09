@@ -161,6 +161,10 @@
     <None Include="python\smoke.py">
       <DeploymentContent>true</DeploymentContent>
     </None>
+    <!-- IsroTaxo menu: a small Ren'Py game (menu\game\*.rpy + images) started when no game is pending. -->
+    <None Include="menu\**\*">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
     <!-- Ren'Py launcher (renpy.py equivalent with UWP paths). -->
     <None Include="python\renpy_uwp_main.py">
       <DeploymentContent>true</DeploymentContent>

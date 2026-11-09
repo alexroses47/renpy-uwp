@@ -6,6 +6,7 @@
 //   decode_benchmark(path, convert=True) -> dict
 //   capture_logs(path)  -> routes FFmpeg av_log and SDL_Log output to a file (UWP has no console)
 //   sdl_error()         -> SDL_GetError()
+//   request_restart()   -> after Python returns, the host restarts the app (menu <-> game switch)
 // Decodes every video frame of `path` as fast as possible with FFmpeg, using the same decoder
 // options as Ren'Py's ffmedia.c (threads=auto), optionally converting each frame to RGBA with
 // swscale like Ren'Py does. Playback through renpysound is paced to the video's frame rate, so it
@@ -17,6 +18,9 @@
 
 #include <SDL.h>
 
+#include "PythonHost.h"
+
+#include <atomic>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
@@ -30,6 +34,10 @@ extern "C" {
 #include <libavutil/log.h>
 #include <libavutil/pixdesc.h>
 #include <libswscale/swscale.h>
+}
+
+namespace renpyuwp::python {
+std::atomic<bool> g_restartRequested{false};
 }
 
 namespace {
@@ -200,6 +208,11 @@ PyObject* CaptureLogs(PyObject*, PyObject* args) {
 
 PyObject* SdlError(PyObject*, PyObject*) { return PyUnicode_FromString(SDL_GetError()); }
 
+PyObject* RequestRestart(PyObject*, PyObject*) {
+    renpyuwp::python::g_restartRequested = true;
+    Py_RETURN_NONE;
+}
+
 PyObject* StackInfo(PyObject*, PyObject*) {
     ULONG_PTR low = 0, high = 0;
     GetCurrentThreadStackLimits(&low, &high);
@@ -212,6 +225,7 @@ PyMethodDef kMethods[] = {
     {"thread_stack_size", StackInfo, METH_NOARGS, "Reserved stack size of the calling thread, in bytes."},
     {"capture_logs", CaptureLogs, METH_VARARGS, "Route FFmpeg and SDL log output to the given file."},
     {"sdl_error", SdlError, METH_NOARGS, "SDL_GetError()."},
+    {"request_restart", RequestRestart, METH_NOARGS, "Restart the app once Python has finished."},
     {nullptr, nullptr, 0, nullptr},
 };
 

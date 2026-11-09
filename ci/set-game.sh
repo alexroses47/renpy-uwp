@@ -2,13 +2,14 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
-# Chooses which game the runtime starts: writes LocalState\renpy-uwp.ini on the Xbox.
+# Starts a game directly on the next app launch (one-shot "launch" in LocalState\renpy-uwp.ini); the
+# IsroTaxo menu comes back when the game quits. Without it the app opens on the menu.
 #
 # Usage:
 #   ci/set-game.sh <game> [hdmi]  # game: folder under <drive>:\renpy\games\ (the_question, ksre)
 #                                 # hdmi: system (default) or 4k (4K120 output + 1440p policy)
 #   ci/set-game.sh --show     # print the current renpy-uwp.ini
-#   ci/set-game.sh --clear    # empty ini: the runtime picks the first game alphabetically
+#   ci/set-game.sh --clear    # empty ini: the app opens on the menu
 #
 # Requires XBOX_DP_USER / XBOX_DP_PASS (optional XBOX_DP_URL) and the app installed and launched once.
 # shellcheck source=lib/devportal.sh
@@ -41,7 +42,7 @@ else
     [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]] || dp_die "invalid game folder name: $1"
     hdmi="${2:-system}"
     [[ "$hdmi" == system || "$hdmi" == 4k ]] || dp_die "hdmi must be 'system' or '4k'"
-    printf '# renpy-uwp runtime settings\ngame = %s\nhdmi = %s\n' "$1" "$hdmi" >"$ini"
+    printf '# renpy-uwp runtime settings\nlaunch = %s\nhdmi = %s\n' "$1" "$hdmi" >"$ini"
 fi
 
 dp_csrf

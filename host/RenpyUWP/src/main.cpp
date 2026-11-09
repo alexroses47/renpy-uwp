@@ -160,6 +160,13 @@ public:
         // Python owns the window while it runs (pygame display; later Ren'Py): SDL on WinRT supports a
         // single window and video calls only on this thread. The HDMI mode set above stays active.
         if (!RunPython(coreWindow)) return 1;
+        if (m_restartAfterPython) {
+            RLOG("restoring the system display mode before restarting");
+            renpyuwp::display::RestoreDefault();
+            RestartApp();
+            SDL_Quit();
+            return 0;
+        }
         if (m_exitAfterPython) {
             RLOG("restoring the system display mode");
             renpyuwp::display::RestoreDefault();
@@ -432,6 +439,32 @@ private:
         return true;
     }
 
+    // Asks Windows to restart the app (Python and Ren'Py run once per process). Must run on the UI thread,
+    // which is this one; the async operation is pumped here because blocking .get() is not allowed on it.
+    void RestartApp() {
+        using winrt::Windows::ApplicationModel::Core::AppRestartFailureReason;
+        using winrt::Windows::ApplicationModel::Core::CoreApplication;
+        using winrt::Windows::Foundation::AsyncStatus;
+        try {
+            auto op = CoreApplication::RequestRestartAsync(L"");
+            ULONGLONG until = GetTickCount64() + 10000;
+            auto dispatcher = winrt::Windows::UI::Core::CoreWindow::GetForCurrentThread().Dispatcher();
+            while (op.Status() == AsyncStatus::Started && GetTickCount64() < until) {
+                dispatcher.ProcessEvents(winrt::Windows::UI::Core::CoreProcessEventsOption::ProcessAllIfPresent);
+                Sleep(10);
+            }
+            if (op.Status() == AsyncStatus::Completed) {
+                AppRestartFailureReason r = op.GetResults();
+                RLOG("restart: RequestRestartAsync -> %d (0 = RestartPending)", static_cast<int>(r));
+            } else {
+                RLOG("restart: RequestRestartAsync did not complete (status %d); exiting instead",
+                     static_cast<int>(op.Status()));
+            }
+        } catch (const winrt::hresult_error& e) {
+            RLOG("restart: RequestRestartAsync failed 0x%08x; exiting instead", static_cast<unsigned>(e.code()));
+        }
+    }
+
     // Reads "key = value" from LocalState\renpy-uwp.ini (written by ci/set-game.sh); '#' starts a comment.
     static std::string ReadIniValue(const char* key, const char* fallback) {
         std::wstring path;
@@ -477,6 +510,11 @@ private:
         // LocalState\renpy-uwp.ini (renpy-launcher.log); returns non-zero if no game could be started.
         const char* entries[] = {"smoke.main", "renpy_uwp_main.main"};
         int failures = renpyuwp::python::RunBlocking(localState, install, entries, 2);
+        if (renpyuwp::python::g_restartRequested) {
+            RLOG("python: restart requested (menu <-> game)");
+            m_restartAfterPython = true;
+            return true;
+        }
         if (failures == 0) {
             RLOG("python: Ren'Py finished; exiting the app");
             m_exitAfterPython = true;
@@ -720,6 +758,7 @@ private:
     bool m_haveHdmi = false;
     bool m_running = true;
     bool m_exitAfterPython = false;
+    bool m_restartAfterPython = false;
 };
 
 int SdlMain(int, char**) {
