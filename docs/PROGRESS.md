@@ -152,6 +152,8 @@
 - Decisión del usuario: FFmpeg queda enlazado estático, con cumplimiento de la LGPL-2.1 §6(a) documentado en
   THIRD_PARTY_NOTICES y RESEARCH §30 (FriBidi seguirá el mismo esquema).
 
+- Usuario: probó en la tele y funciona (barras de colores, tonos y vídeo en movimiento).
+- **Hito 3 cerrado (2026-11-09)** con la confirmación del usuario. Tag git `hito-3`.
+
 **Siguiente paso**
-- Confirmación visual/auditiva del usuario y cierre del Hito 3 (tag `hito-3`). Después, Hito 4 (Ren'Py arranca, ANGLE
-  empaquetado), no antes de su confirmación.
+- Hito 4 (Ren'Py arranca: "The Question" con mando). Primero la investigación en RESEARCH.
