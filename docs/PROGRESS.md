@@ -157,3 +157,36 @@
 
 **Siguiente paso**
 - Hito 4 (Ren'Py arranca: "The Question" con mando). Primero la investigación en RESEARCH.
+
+## 2026-11-09 — Hito 4 (Ren'Py arranca), sesión 5
+
+**Hecho**
+- Investigación en RESEARCH §31 (62 módulos, assimp, ANGLE/GLES, rutas del lanzador, usos de `ctypes`).
+- Los 61 módulos de Ren'Py (todos menos Live2D; `tfd` aparte), parches `0001-msvc-compat` (más `alloca`) y
+  `0002-uwp-sandbox` (presplash y locale sin `ctypes`).
+- `deps/assimp` (5.4.3, glTF + STL) con su propia caché. `site-packages.zip` con los paquetes puros de renpy-build
+  (ecdsa, rsa, six, requests...).
+- Lanzador `python/renpy_uwp_main.py`: elige el juego en `<unidad>:\renpy\games\*\game\` (`renpy-uwp.ini`,
+  `ci/set-game.sh`); partidas en `LocalState\saves`, logs en `LocalState\logs\<juego>`; renderer `gles2`. El host sale
+  restaurando el modo HDMI cuando Ren'Py termina.
+- ANGLE rehecho: los args de gn no se aplicaban nunca (`$args` es variable automática de PowerShell). Ahora va con
+  `args.gn`, `is_clang=false`, `use_custom_libcxx=false` y verificación de dependencias con `dumpbin`. Se empaqueta
+  `d3dcompiler_47.dll`.
+- SDL 2.0.20: parche del formato de modo de pantalla en WinRT (enum DXGI en lugar de formato SDL).
+- Swapchain de ANGLE en Xbox = modo HDMI: con 4K reinicia la GPU (`EGL_BAD_ALLOC`). El host deja el modo del sistema
+  (`hdmi = system`) y baja a 1080p60 si supera 1440p. El 4K queda para el Hito 5.
+- `sdk-fonts` en `renpy-base` (pantalla de Preferencias de The Question). Despliegue: reemisión del certificado del
+  Device Portal con la misma clave detectada y aceptada automáticamente; `fetch-logs.sh` admite subcarpetas.
+- **En la Xbox (0.0.47.0):** The Question con OpenGL ES 3.0 (ANGLE, D3D11) a 1080p; el usuario jugó con el mando, oyó el
+  audio, guardó, cargó, probó los idiomas y salió. Log limpio (estado 0).
+- Unas 9 iteraciones de CI (host y ANGLE).
+
+**Avisos conocidos (inofensivos)**
+- Ren'Py no puede escribir `.rpyc` de `renpy/common` en el paquete (compila en memoria en cada arranque, ~1,7 s) ni
+  `game/cache` en el USB.
+
+- **Hito 4 cerrado (2026-11-09)** con la confirmación del usuario. Tag git `hito-4`.
+
+**Siguiente paso**
+- Hito 5 (KS:RE): investigación hecha en RESEARCH §32. Arrancar KS:RE, vídeos, USB frente a LocalState, memoria y
+  decidir el 1440p.
