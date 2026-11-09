@@ -37,6 +37,9 @@ Invoke-Checked 'pip cython' { & $py -m pip install -q 'cython==3.2.4' setuptools
 
 Push-Location $src
 try {
+    # Ren'Py's setuplib opens .pyx files without an encoding; on Windows that is cp1252 and fails on
+    # UTF-8 sources (textsupport.pyx). UTF-8 mode makes open() default to UTF-8, as on Linux.
+    $env:PYTHONUTF8 = '1'
     $env:RENPY_STATIC = '1'
     $env:RENPY_REGENERATE_CYTHON = '1'
     $env:RENPY_CYTHON = (Join-Path $venv 'Scripts\cython.exe')
