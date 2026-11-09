@@ -190,3 +190,27 @@
 **Siguiente paso**
 - Hito 5 (KS:RE): investigación hecha en RESEARCH §32. Arrancar KS:RE, vídeos, USB frente a LocalState, memoria y
   decidir el 1440p.
+
+## 2026-11-09 — Hito 5 (KS:RE) y release IsroTaxo 0.1.56, sesión 6
+
+**Hecho**
+- Investigación de KS:RE 2.0.5 en RESEARCH §32. `pypresence` neutralizado desde el lanzador (stub en
+  `sys.modules`). KS:RE arranca en la Xbox: menú, mando, OpenGL ES 3.0 a 1080p, script en 11 s desde USB.
+- Memoria en el menú de KS:RE como tipo App: working set 774 MB, ~96 MB libres de ~1,25 GB. Hay que usarlo como
+  tipo **Game** (pendiente de remedir).
+- **IsroTaxo**: nombre, logo del autor (iconos, splash; `host/tools/make_branding.py`) y menú propio en Ren'Py
+  (`host/RenpyUWP/menu`): continuar, cargar juego (detectados + explorador de carpetas con ayuda sobre la
+  estructura), guía, acerca de, salir. Menú ↔ juego reiniciando la app (`CoreApplication::RequestRestartAsync`).
+  Probado en la Xbox por el usuario.
+- README nuevo (instalación, guía de permisos USB, guía de juegos, compatibilidad, licencias, capturas en la Xbox
+  con The Question, cuyo arte es MIT). `ci/screenshot.sh` (Device Portal `/ext/screenshot`; no capta la guía de
+  Xbox con una app en primer plano: se usaron fotos de la TV, sin EXIF).
+- Versiones 0.1.x. **Pre-release v0.1.56** publicado con msix, VCLibs, zip de licencias y SHA256SUMS, atado al
+  commit `09e0f28`.
+- CI: GitHub dejó de arrancar `build-host` en `main` (sin jobs, «workflow file issue»); el mismo archivo funcionaba
+  en otras ramas. Se resolvió renombrando el grupo de `concurrency`.
+
+**Pendiente del Hito 5**
+- Aceptación: Acto 1 completo de KS:RE, guardar, salir, volver, cargar.
+- Vídeos dentro de KS:RE; USB frente a copia en LocalState (copia automatizada por Device Portal); memoria como
+  tipo Game; decidir el 1440p (KS:RE es 1080p virtual).
