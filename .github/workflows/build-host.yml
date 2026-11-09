@@ -45,7 +45,7 @@ jobs:
 
       - name: Restore SDL2 from cache
         id: cache-sdl2
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: out/deps/sdl2
           key: sdl2-uwp-x64-${{ env.CONFIGURATION }}-${{ hashFiles('deps/sdl2/*.ps1') }}
@@ -55,6 +55,14 @@ jobs:
         shell: pwsh
         run: ./deps/sdl2/build.ps1 -Prefix "$env:GITHUB_WORKSPACE/out/deps/sdl2" -Configuration $env:CONFIGURATION
 
+      # Saved right after building (not at job end) so a later failure does not throw it away.
+      - name: Save sdl2 to cache
+        if: steps.cache-sdl2.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: out/deps/sdl2
+          key: ${{ steps.cache-sdl2.outputs.cache-primary-key }}
+
       - name: Host Python 3.12 (frozen modules and .pyc generation)
         id: hostpy
         uses: actions/setup-python@v5
@@ -63,7 +71,7 @@ jobs:
 
       - name: Restore CPython from cache
         id: cache-cpython
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: out/deps/cpython
           key: cpython-uwp-x64-${{ env.CONFIGURATION }}-${{ hashFiles('python/cpython-uwp/**') }}-py${{ steps.hostpy.outputs.python-version }}
@@ -73,9 +81,17 @@ jobs:
         shell: pwsh
         run: ./python/cpython-uwp/build.ps1 -Prefix "$env:GITHUB_WORKSPACE/out/deps/cpython" -HostPython "${{ steps.hostpy.outputs.python-path }}" -Configuration $env:CONFIGURATION
 
+      # Saved right after building (not at job end) so a later failure does not throw it away.
+      - name: Save cpython to cache
+        if: steps.cache-cpython.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: out/deps/cpython
+          key: ${{ steps.cache-cpython.outputs.cache-primary-key }}
+
       - name: Restore media dependencies from cache
         id: cache-media
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: out/deps/media
           key: media-uwp-x64-${{ hashFiles('deps/media/**') }}
@@ -100,9 +116,17 @@ jobs:
         shell: pwsh
         run: ./deps/media/build.ps1 -Prefix "$env:GITHUB_WORKSPACE/out/deps/media" -ZlibPrefix "$env:GITHUB_WORKSPACE/out/deps/cpython" -SdlPrefix "$env:GITHUB_WORKSPACE/out/deps/sdl2"
 
+      # Saved right after building (not at job end) so a later failure does not throw it away.
+      - name: Save media to cache
+        if: steps.cache-media.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: out/deps/media
+          key: ${{ steps.cache-media.outputs.cache-primary-key }}
+
       - name: Restore Ren'Py static modules from cache
         id: cache-renpy
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: out/deps/renpy
           key: renpy-uwp-x64-${{ hashFiles('renpy/VERSION', 'renpy/uwp/**', 'python/cpython-uwp/**', 'deps/media/**', 'deps/sdl2/*.ps1') }}-py${{ steps.hostpy.outputs.python-version }}
@@ -112,9 +136,17 @@ jobs:
         shell: pwsh
         run: ./renpy/uwp/build.ps1 -Prefix "$env:GITHUB_WORKSPACE/out/deps/renpy" -HostPython "${{ steps.hostpy.outputs.python-path }}" -PythonPrefix "$env:GITHUB_WORKSPACE/out/deps/cpython" -SdlPrefix "$env:GITHUB_WORKSPACE/out/deps/sdl2" -MediaPrefix "$env:GITHUB_WORKSPACE/out/deps/media"
 
+      # Saved right after building (not at job end) so a later failure does not throw it away.
+      - name: Save renpy to cache
+        if: steps.cache-renpy.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: out/deps/renpy
+          key: ${{ steps.cache-renpy.outputs.cache-primary-key }}
+
       - name: Restore test media from cache
         id: cache-testmedia
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: out/testmedia
           key: testmedia-${{ hashFiles('ci/make-test-media.ps1') }}
@@ -123,6 +155,14 @@ jobs:
         if: steps.cache-testmedia.outputs.cache-hit != 'true'
         shell: pwsh
         run: ./ci/make-test-media.ps1 -OutDir "$env:GITHUB_WORKSPACE/out/testmedia"
+
+      # Saved right after building (not at job end) so a later failure does not throw it away.
+      - name: Save testmedia to cache
+        if: steps.cache-testmedia.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: out/testmedia
+          key: ${{ steps.cache-testmedia.outputs.cache-primary-key }}
 
       - name: Stage Python stdlib zip next to the host project
         shell: pwsh
