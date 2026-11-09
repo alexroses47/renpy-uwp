@@ -73,6 +73,32 @@ jobs:
         shell: pwsh
         run: ./python/cpython-uwp/build.ps1 -Prefix "$env:GITHUB_WORKSPACE/out/deps/cpython" -HostPython "${{ steps.hostpy.outputs.python-path }}" -Configuration $env:CONFIGURATION
 
+      - name: Restore media dependencies from cache
+        id: cache-media
+        uses: actions/cache@v4
+        with:
+          path: out/deps/media
+          key: media-uwp-x64-${{ hashFiles('deps/media/**') }}
+
+      - name: MSVC environment for UWP (FFmpeg configure)
+        if: steps.cache-media.outputs.cache-hit != 'true'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+          uwp: true
+
+      - name: Install NASM
+        if: steps.cache-media.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          choco install nasm -y --no-progress
+          "C:\Program Files\NASM" >> $env:GITHUB_PATH
+
+      - name: Build media dependencies (png, jpeg, webp, freetype, harfbuzz, fribidi, SDL2_image, FFmpeg LGPL)
+        if: steps.cache-media.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./deps/media/build.ps1 -Prefix "$env:GITHUB_WORKSPACE/out/deps/media" -ZlibPrefix "$env:GITHUB_WORKSPACE/out/deps/cpython" -SdlPrefix "$env:GITHUB_WORKSPACE/out/deps/sdl2"
+
       - name: Stage Python stdlib zip next to the host project
         shell: pwsh
         run: |
