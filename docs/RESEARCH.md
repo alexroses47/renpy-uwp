@@ -570,3 +570,21 @@ No hay backport a 3.12 (rama solo de seguridad). Los cambios se aplican a mano.
 - DLLs importadas por `RenpyUWP.exe`: API sets `api-ms-win-core-*`/`api-ms-win-crt-*` más `bcrypt d3d11 OLEAUT32 RPCRT4 WS2_32
   VCRUNTIME140(_1)_APP MSVCP140_APP SDL2`; las que no son API sets llegan por `WindowsApp.lib` (superficie permitida para UWP).
 - Dato para el Hito 4: la carpeta `game/` de KS:RE trae `python-packages/` (paquetes Python propios del juego) además de 6 `.rpa`.
+
+## 24. Módulos que carga KS:RE (volcado real, `docs/renpy-modules-ksre.json`)
+
+KS:RE 2.0.5 con Ren'Py **8.5.3.26051504** / Python **3.12.8** en Linux (menú, nueva partida, guardar, cargar, salir).
+Volcados: `end_of_init, first_interaction, after_load ×2, at_exit, quit, atexit`; 578 módulos (415 Python, 120 built-in,
+43 otros), **ninguna extensión suelta**: los módulos Cython de Ren'Py y pygame_sdl2 van integrados en el binario.
+
+Comparado con nuestro build UWP (built-ins de `python.log` 0.0.23 + `Lib` del fork), la stdlib que KS:RE carga y nosotros
+**no** damos es solo:
+- Excluidos a propósito en el Hito 2: `_bz2/bz2`, `_lzma/lzma` (opcionales: `shutil` y `zipfile` los importan en `try`),
+  `_ssl/ssl`, `_hashlib` (opcionales en `http.client`, `urllib`, `hashlib`), `_ctypes/ctypes`.
+- Solo POSIX (en Windows Ren'Py usa `nt`/`_winapi`): `posix pwd grp fcntl _posixsubprocess`.
+
+`ctypes` lo importa Ren'Py en rutas de plataforma (`renpy/display/core.py` DPI/consola en Windows, `renpy/error.py`,
+`renpy/display/presplash.py`, `renpy/exports/platformexports.py`, `renpy/common/00steam.rpy`) → **revisar en el Hito 4**:
+proteger esas rutas en UWP o construir `_ctypes` (libffi + W^X, ver #154700/#161539 upstream).
+Paquetes no estándar que trae el juego o Ren'Py: `renpy` (223 módulos), `pygame_sdl2`/`pygame` (25+25), `store`, `ecdsa`,
+`rsa`, `six`, `pypresence` (Discord, del juego), `steamapi`/`_renpysteam`, `_renpytfd`, `jnius` (stub).

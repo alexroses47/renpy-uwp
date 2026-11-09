@@ -106,7 +106,12 @@
 - `tools/dump-renpy-modules.sh` corregido (callbacks verificados en 8.5.3, protegidos, 4 momentos de volcado) y probado con el
   SDK oficial de Ren'Py 8.5.3 (`the_question`, guardar/cargar/salir automáticos).
 
-**Pendiente para cerrar el Hito 2**
-- Usuario: volcado de módulos de KS:RE con `tools/dump-renpy-modules.sh` (fuente de verdad de la lista).
-- Usuario: comprobar lo pendiente del Hito 1 (volver desde Inicio reaplica 4K/120; View y Menu).
-- Confirmación del usuario.
+- Volcado real de KS:RE (`docs/renpy-modules-ksre.json`, RESEARCH §24): a nuestro build solo le faltan los módulos excluidos
+  (bz2, lzma, ssl, _hashlib, ctypes) y los exclusivos de POSIX. `ctypes` queda anotado para el Hito 4.
+- Usuario: lo pendiente del Hito 1 funciona (volver desde Inicio reaplica 4K/120 tras un negro breve de resincronización
+  HDMI; View y Menu OK).
+- **Hito 2 cerrado (2026-11-08)** con la confirmación del usuario. Tag git `hito-2`.
+
+**Siguiente paso**
+- Hito 3 (dependencias C + pygame_sdl2): investigar primero en RESEARCH (recetas de renpy-build, versiones, ANGLE SternXD,
+  FFmpeg LGPL, SDL2_image), incluir bz2/xz si son baratos. No empezar sin la confirmación del usuario.
