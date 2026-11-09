@@ -137,7 +137,10 @@ def play_ogg(pygame, screen):
         probe_rwops("test.ogg")
         for label, make in file_variants("test.ogg"):
             try:
-                rs.play(0, make(), "test.ogg")
+                # Keep the file object alive while it plays (Ren'Py holds its own), and pass end=-1 as
+                # renpy/audio/audio.py does: play()'s default end=0 means "0 seconds long" in ffmedia.c.
+                src = make()
+                rs.play(0, src, "test.ogg", end=-1)
                 print(f"OGG [{label}]: play() returned | {rps_error(rs)}")
                 positions = []
 
@@ -146,7 +149,7 @@ def play_ogg(pygame, screen):
                     if not positions or time.time() - positions[-1][0] >= 0.5:
                         positions.append((time.time(), rs.get_pos(0), rs.busy(0)))
 
-                pump_for(pygame, 2.5, tick)
+                pump_for(pygame, 3.0, tick)
                 print(f"OGG [{label}]: pos/busy " + ", ".join(f"{p:.2f}/{int(b)}" for _, p, b in positions)
                       + f" | duration {rs.get_duration(0)} | {rps_error(rs)}")
                 rs.stop(0)
@@ -192,7 +195,8 @@ def decode_video(pygame, screen, name):
         for label, make in file_variants(name):
             try:
                 rs.set_video(1, rs.NODROP_VIDEO)
-                rs.play(1, make(), name)
+                src = make()  # kept alive while playing; end=-1 as Ren'Py passes (see play_ogg)
+                rs.play(1, src, name, end=-1)
                 print(f"VIDEO {name} [{label}]: play() returned | {rps_error(rs)}")
                 frames = 0
                 first = None
