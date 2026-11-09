@@ -92,6 +92,8 @@ function Build-CMake([string]$name, [string]$src, [string[]]$extra, [string]$tar
 # --- zlib for consumers that expect z.lib / zlib.h in the prefix (FFmpeg -lz, FindZLIB) -------
 New-Item -ItemType Directory -Force (Join-Path $Prefix 'lib'), (Join-Path $Prefix 'include') | Out-Null
 Copy-Item $zlib (Join-Path $Prefix 'lib\z.lib')
+# FFmpeg's msvc toolchain maps -lz to zlib.lib (configure, msvc_flags).
+Copy-Item $zlib (Join-Path $Prefix 'lib\zlib.lib')
 Copy-Item (Join-Path $zinc '*.h') (Join-Path $Prefix 'include')
 $zlibArgs = @("-DZLIB_INCLUDE_DIR=$(Join-Path $Prefix 'include')", "-DZLIB_LIBRARY=$(Join-Path $Prefix 'lib\z.lib')")
 
@@ -159,7 +161,7 @@ Invoke-Checked 'msys2 packages' { & $bash -lc 'pacman -S --noconfirm --needed ma
 # MSYS2's /usr/bin/link would shadow MSVC's link.exe.
 Invoke-Checked 'hide msys link' { & $bash -lc 'test ! -e /usr/bin/link.exe || mv -f /usr/bin/link.exe /usr/bin/link.exe.msys' }
 $sh = (Join-Path $here 'ffmpeg\build.sh')
-# FFmpeg links zlib as -lz, i.e. z.lib: use the copy in the prefix (the CPython one is zlibstatic.lib).
+# FFmpeg links zlib as -lz (zlib.lib with msvc): use the prefix copies, not the CPython zlibstatic.lib.
 Invoke-Checked 'ffmpeg' { & $bash -lc "'$($sh -replace '\\','/')' '$($s -replace '\\','/')' '$($Prefix -replace '\\','/')' '$((Join-Path $Prefix 'include') -replace '\\','/')' '$((Join-Path $Prefix 'lib') -replace '\\','/')'" }
 Copy-License $s 'FFmpeg' @('COPYING.LGPLv2.1', 'LICENSE.md')
 
