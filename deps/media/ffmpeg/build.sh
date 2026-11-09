@@ -37,6 +37,7 @@ which cl link nasm
     --enable-parser=vp9,opus,vorbis \
     --enable-zlib \
     --enable-w32threads --disable-pthreads \
+    --enable-x86asm --x86asmexe=nasm \
     --disable-d3d11va --disable-dxva2 --disable-mediafoundation \
     --disable-iconv --disable-bzlib --disable-lzma --disable-sdl2 --disable-schannel \
     --extra-cflags="-MD -DWINAPI_FAMILY=WINAPI_FAMILY_APP -D_WIN32_WINNT=0x0A00 -I$zinc" \
@@ -44,6 +45,10 @@ which cl link nasm
     || { tail -n 60 ffbuild/config.log; exit 1; }
 
 grep -E "^(HAVE_UWP|HAVE_WINRT|CONFIG_GPL|CONFIG_VERSION3|CONFIG_NONFREE)" ffbuild/config.mak || true
+# The x86-64 SIMD (NASM) code must be on: VP9 decoding is several times slower in plain C.
+grep -E "^#define (HAVE_X86ASM|HAVE_SSSE3_EXTERNAL|HAVE_AVX2_EXTERNAL|HAVE_AVX512_EXTERNAL|ARCH_X86_64) " config.h
+grep -q "^#define HAVE_X86ASM 1" config.h || { echo "FATAL: FFmpeg configured without x86asm"; exit 1; }
+grep -q "^#define HAVE_AVX2_EXTERNAL 1" config.h || { echo "FATAL: FFmpeg configured without AVX2 asm"; exit 1; }
 make -j"$(nproc)"
 make install
 

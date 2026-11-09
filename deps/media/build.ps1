@@ -34,7 +34,11 @@ function Get-Source([string]$key) {
     $tar = Join-Path $tars $d.file
     if (-not (Test-Path $tar)) {
         Write-Host "Downloading $($d.url)"
-        Invoke-WebRequest -Uri $d.url -OutFile $tar -UserAgent 'renpy-uwp-ci'
+        # curl with retries and a hard time limit: an Invoke-WebRequest download from GitHub hung for
+        # 58 minutes in CI and the whole job timed out.
+        Invoke-Checked "download $($d.file)" {
+            curl.exe -fsSL --retry 4 --retry-delay 5 --retry-all-errors --connect-timeout 30 --max-time 900 -A 'renpy-uwp-ci' -o $tar $d.url
+        }
     }
     $h = (Get-FileHash -Algorithm SHA256 $tar).Hash.ToLowerInvariant()
     if ($h -ne $d.sha) { throw "SHA-256 mismatch for $($d.file): $h" }
