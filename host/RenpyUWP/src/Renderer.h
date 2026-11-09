@@ -30,6 +30,8 @@ public:
     uint32_t DeviceLosses() const { return m_deviceLosses; }
     // Drops the swapchain (call before an HDMI mode change). Frame() skips until Recreate().
     void ReleaseSwapchain();
+    // Releases device and swapchain completely (before handing the window to Python/pygame).
+    void Shutdown();
     // Logs the video memory budget/usage (IDXGIAdapter3::QueryVideoMemoryInfo).
     void LogVideoMemory(const char* when) const;
     enum class FrameResult { Presented, Skipped, Error };

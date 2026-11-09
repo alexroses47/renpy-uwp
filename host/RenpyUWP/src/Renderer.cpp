@@ -49,6 +49,11 @@ void Renderer::LogVideoMemory(const char* when) const {
     }
 }
 
+void Renderer::Shutdown() {
+    ReleaseAll();
+    RLOG("renderer shut down");
+}
+
 long Renderer::DeviceRemovedReason() const {
     return m_device ? static_cast<long>(m_device->GetDeviceRemovedReason()) : 0;
 }

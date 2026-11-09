@@ -33,7 +33,7 @@
 
 namespace {
 
-constexpr char kHostVersion[] = "milestone-2";
+constexpr char kHostVersion[] = "milestone-3";
 
 const float kColors[][4] = {
     {0.00f, 0.35f, 0.40f, 1.0f},  // teal (milestone 0 color)
@@ -47,6 +47,12 @@ constexpr int kNumColors = static_cast<int>(sizeof(kColors) / sizeof(kColors[0])
 
 void LogEnvironment() {
     RLOG("renpy-uwp host %s starting", kHostVersion);
+    {
+        ULONG_PTR low = 0, high = 0;
+        GetCurrentThreadStackLimits(&low, &high);
+        RLOG("main thread stack reserve: %llu KB (linker /STACK; 8192 KB expected)",
+             static_cast<unsigned long long>((high - low) / 1024));
+    }
     try {
         auto id = winrt::Windows::ApplicationModel::Package::Current().Id();
         RLOG("package: %ls", id.FullName().c_str());
@@ -137,15 +143,9 @@ public:
 
         if (haveHdmi && !ApplyPolicy()) return 1;
 
-        // Milestone 2: embedded CPython smoke test on its own 8 MB thread (log: LocalState\python.log).
-        try {
-            std::wstring localState = winrt::Windows::Storage::ApplicationData::Current().LocalFolder().Path().c_str();
-            std::wstring install =
-                winrt::Windows::ApplicationModel::Package::Current().InstalledLocation().Path().c_str();
-            renpyuwp::python::StartAsync(localState, install);
-        } catch (...) {
-            RLOG("python: cannot resolve LocalState/install paths");
-        }
+        // Python owns the window while it runs (pygame display; later Ren'Py): SDL on WinRT supports a
+        // single window and video calls only on this thread. The HDMI mode set above stays active.
+        if (!RunPython(coreWindow)) return 1;
 
         RLOG("entering main loop (A/B: color, X: fps+vram report, Y: storage probe, View: system HDMI mode, "
              "Menu: re-apply 4K120/1440p, RB: diagnostic mode matrix)");
@@ -374,7 +374,7 @@ private:
             RLOG("fatal: swapchain recreation failed");
             return false;
         }
-        Settle(2.0);
+        Settle(3.0);
         char label[128];
         snprintf(label, sizeof(label), "%s %ux%u @ %.3f Hz, swapchain %ux%u", what, mode.width, mode.height,
                  mode.refreshHz, m_renderer.Width(), m_renderer.Height());
@@ -410,6 +410,36 @@ private:
             return TryBestMode() && ApplyPolicy();
         }
         return true;
+    }
+
+    bool RunPython(IUnknown* coreWindow) {
+        std::wstring localState, install;
+        try {
+            localState = winrt::Windows::Storage::ApplicationData::Current().LocalFolder().Path().c_str();
+            install = winrt::Windows::ApplicationModel::Package::Current().InstalledLocation().Path().c_str();
+        } catch (...) {
+            RLOG("python: cannot resolve LocalState/install paths");
+            return true;
+        }
+        RLOG("python: handing the window to Python");
+        m_renderer.Shutdown();
+        SDL_DestroyWindow(m_window);
+        m_window = nullptr;
+        // smoke: interpreter/stdlib/files (python.log); media_test: pygame_sdl2 PNG, OGG, VP9 (media-test.log).
+        const char* entries[] = {"smoke.main", "media_test.main"};
+        int failures = renpyuwp::python::RunBlocking(localState, install, entries, 2);
+        RLOG("python: back in the host (%d failing entries); recreating the host window", failures);
+        m_window = SDL_CreateWindow("Ren'Py UWP", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 1920, 1080, 0);
+        if (!m_window) {
+            RLOG("fatal: SDL_CreateWindow after Python failed: %s", SDL_GetError());
+            return false;
+        }
+        renpyuwp::display::Mode cur = renpyuwp::display::Current();
+        bool ok = m_renderer.Init(coreWindow, m_policyActive ? kPolicyW : 1920, m_policyActive ? kPolicyH : 1080);
+        RLOG("python: host renderer %s (output %ux%u @ %.3f Hz)", ok ? "restored" : "FAILED", cur.width, cur.height,
+             cur.refreshHz);
+        m_lastPresent = GetTickCount64();
+        return ok;
     }
 
     void LogWindowState(const char* when) {
@@ -472,6 +502,11 @@ private:
 
     // Measures presented frames per second over `seconds` of wall time. Returns the fps.
     double Measure(double seconds, const char* label) {
+        struct Flag {
+            bool& f;
+            explicit Flag(bool& v) : f(v) { f = true; }
+            ~Flag() { f = false; }
+        } measuring(m_measuring);
         RLOG("fps: measuring %.0f s: %s", seconds, label);
         uint32_t pc0 = 0, prc0 = 0, src0 = 0, pc1 = 0, prc1 = 0, src1 = 0;
         bool stats0 = m_renderer.FrameStatistics(pc0, prc0, src0);
@@ -582,6 +617,10 @@ private:
                 RLOG("input: button B -> color %s", kColorNames[m_color]);
                 break;
             case SDL_CONTROLLER_BUTTON_X:
+                if (m_measuring) {
+                    RLOG("input: button X ignored during a measurement (it would reset the counters)");
+                    break;
+                }
                 RLOG("input: button X -> fps and vram report");
                 ReportFps("on request (since last report)");
                 m_renderer.LogVideoMemory("on request");
@@ -621,6 +660,7 @@ private:
     bool m_policyActive = false;
     bool m_inFallback = false;
     ULONGLONG m_lastPresent = 0;
+    bool m_measuring = false;
     UINT m_syncInterval = 1;
     renpyuwp::display::Mode m_activeMode;
     bool m_haveHdmi = false;

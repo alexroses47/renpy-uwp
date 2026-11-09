@@ -6,16 +6,14 @@
 
 #include <string>
 
-// Embedded CPython (static python312.lib). The interpreter runs on its own thread with an
-// 8 MB stack (UWP threads default to 1 MB and Ren'Py recurses deeply).
+// Embedded CPython (static python312.lib + renpy_static.lib built-in modules).
+// Runs on the calling thread, which must be the SDL/CoreWindow thread: SDL's WinRT video backend
+// (pygame display, later Ren'Py) only works there. The executable reserves an 8 MB stack.
 namespace renpyuwp::python {
 
-enum class State { NotStarted, Running, Succeeded, Failed };
-
-// Starts the interpreter thread: initializes Python, runs python\smoke.py (module "smoke",
-// function main), finalizes. Paths are absolute (LocalState, package install folder).
-void StartAsync(const std::wstring& localState, const std::wstring& installDir);
-
-State GetState();
+// Initializes Python, runs each "module.function" in `entries` in order, finalizes.
+// Returns the number of entries that failed or returned non-zero.
+int RunBlocking(const std::wstring& localState, const std::wstring& installDir,
+                const char* const* entries, int count);
 
 }  // namespace renpyuwp::python

@@ -35,7 +35,11 @@ void Init() {
         OutputDebugStringW(L"renpy-uwp: cannot resolve LocalState path\n");
         return;
     }
+    std::wstring prev = path + L"\\renpy-uwp.prev.log";
     path += L"\\renpy-uwp.log";
+    // Keep the previous launch's log (a test that spans two launches stays inspectable).
+    _wremove(prev.c_str());
+    _wrename(path.c_str(), prev.c_str());
     // _wfopen_s opens files without sharing; the Device Portal must be able to read the log
     // while the app is running, so allow shared reads.
     g_file = _wfsopen(path.c_str(), L"wb", _SH_DENYWR);

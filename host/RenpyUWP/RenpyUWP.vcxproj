@@ -51,6 +51,11 @@
     <SdlDir Condition="'$(SdlDir)'==''">$(MSBuildThisFileDirectory)..\..\out\deps\sdl2</SdlDir>
     <!-- CPython install prefix produced by python/cpython-uwp/build.ps1 (CI passes /p:PythonDir=...). -->
     <PythonDir Condition="'$(PythonDir)'==''">$(MSBuildThisFileDirectory)..\..\out\deps\cpython</PythonDir>
+    <!-- Media dependencies (deps/media/build.ps1) and Ren'Py static modules (renpy/uwp/build.ps1). -->
+    <MediaDir Condition="'$(MediaDir)'==''">$(MSBuildThisFileDirectory)..\..\out\deps\media</MediaDir>
+    <!-- Exact libwebp library names depend on its CMake (checked in the media build log). -->
+    <WebpLibs Condition="'$(WebpLibs)'==''">webp.lib;webpdemux.lib;sharpyuv.lib</WebpLibs>
+    <RenpyDir Condition="'$(RenpyDir)'==''">$(MSBuildThisFileDirectory)..\..\out\deps\renpy</RenpyDir>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -73,19 +78,21 @@
       <WarningLevel>Level4</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <AdditionalOptions>/bigobj /utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <PreprocessorDefinitions>NOMINMAX;WIN32_LEAN_AND_MEAN;Py_NO_ENABLE_SHARED;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NOMINMAX;WIN32_LEAN_AND_MEAN;Py_NO_ENABLE_SHARED;__STDC_CONSTANT_MACROS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <!-- C++/WinRT projection headers shipped with the Windows SDK (no NuGet needed). -->
-      <AdditionalIncludeDirectories>$(PythonDir)\include;$(SdlDir)\include\SDL2;$(WindowsSdkDir)Include\$(WindowsTargetPlatformVersion)\cppwinrt;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(MediaDir)\include;$(PythonDir)\include;$(SdlDir)\include\SDL2;$(WindowsSdkDir)Include\$(WindowsTargetPlatformVersion)\cppwinrt;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateWindowsMetadata>false</GenerateWindowsMetadata>
-      <AdditionalLibraryDirectories>$(PythonDir)\lib;$(SdlDir)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(RenpyDir)\lib;$(MediaDir)\lib;$(PythonDir)\lib;$(SdlDir)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <!-- Python (and later Ren'Py) runs on the main/SDL thread: 8 MB stack like the old Python thread. -->
+      <StackReserveSize>8388608</StackReserveSize>
       <!-- Strict mode: only WindowsApp.lib for system APIs (anything else must be justified in RESEARCH.md). -->
       <!-- ws2_32.lib after WindowsApp.lib: only for the data symbol in6addr_any (overlapped.c); functions still
            resolve through WindowsApp.lib. Kodi links ws2_32 for the same build (docs/RESEARCH.md section 22). -->
-      <AdditionalDependencies>python312.lib;zlibstatic.lib;expat_uwp.lib;mpdec_uwp.lib;SDL2.lib;WindowsApp.lib;ws2_32.lib</AdditionalDependencies>
+      <AdditionalDependencies>renpy_static.lib;SDL2_image.lib;png.lib;jpeg.lib;$(WebpLibs);avformat.lib;avcodec.lib;swresample.lib;swscale.lib;avutil.lib;python312.lib;zlibstatic.lib;expat_uwp.lib;mpdec_uwp.lib;SDL2.lib;WindowsApp.lib;ws2_32.lib</AdditionalDependencies>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
     </Link>
   </ItemDefinitionGroup>
@@ -115,6 +122,7 @@
     <ClCompile Include="src\DisplayProbe.cpp" />
     <ClCompile Include="src\StorageProbe.cpp" />
     <ClCompile Include="src\PythonHost.cpp" />
+    <ClCompile Include="src\BenchModule.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Log.h" />
@@ -133,6 +141,25 @@
       <DeploymentContent>true</DeploymentContent>
     </None>
     <None Include="python\smoke.py">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="python\media_test.py">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <!-- Copied here by CI (git-ignored): Ren'Py package zip and synthetic test media. -->
+    <None Include="python\renpy.zip">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="python\test\test.png">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="python\test\test.ogg">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="python\test\test-vp9.mkv">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="python\test\test-vp9-10bit.mkv">
       <DeploymentContent>true</DeploymentContent>
     </None>
   </ItemGroup>
