@@ -1,0 +1,41 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: build-angle
+
+# ANGLE for UWP x64 (slow: depot_tools + gclient sync + ninja). The result is cached under a key
+# that build-host.yml restores; run this workflow again only when deps/angle/ changes.
+#   gh workflow run build-angle.yml && gh run watch
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  angle:
+    runs-on: windows-2022
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore ANGLE from cache
+        id: cache-angle
+        uses: actions/cache@v4
+        with:
+          path: out/deps/angle
+          key: angle-uwp-x64-${{ hashFiles('deps/angle/**') }}
+
+      - name: Build ANGLE (winuwp, D3D11 only)
+        if: steps.cache-angle.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./deps/angle/build.ps1 -Prefix "$env:GITHUB_WORKSPACE/out/deps/angle"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: angle-uwp-x64
+          path: out/deps/angle/
+          if-no-files-found: error
+          retention-days: 30
