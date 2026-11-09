@@ -1,0 +1,2 @@
+# Ren'Py patches are applied with git apply to an LF clone: keep them LF on Windows checkouts too.
+renpy/uwp/patches/*.diff eol=lf
