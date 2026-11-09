@@ -57,6 +57,8 @@
     <!-- libwebp's CMake adds a "lib" prefix under MSVC (CMakeLists.txt, webp_libname_prefix). -->
     <WebpLibs Condition="'$(WebpLibs)'==''">libwebp.lib;libwebpdemux.lib;libsharpyuv.lib</WebpLibs>
     <RenpyDir Condition="'$(RenpyDir)'==''">$(MSBuildThisFileDirectory)..\..\out\deps\renpy</RenpyDir>
+    <!-- assimp (deps/assimp/build.ps1): required by renpy.gl2.assimp, imported unconditionally by Ren'Py. -->
+    <AssimpDir Condition="'$(AssimpDir)'==''">$(MSBuildThisFileDirectory)..\..\out\deps\assimp</AssimpDir>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -87,13 +89,13 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateWindowsMetadata>false</GenerateWindowsMetadata>
-      <AdditionalLibraryDirectories>$(RenpyDir)\lib;$(MediaDir)\lib;$(PythonDir)\lib;$(SdlDir)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(RenpyDir)\lib;$(AssimpDir)\lib;$(MediaDir)\lib;$(PythonDir)\lib;$(SdlDir)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <!-- Python (and later Ren'Py) runs on the main/SDL thread: 8 MB stack like the old Python thread. -->
       <StackReserveSize>8388608</StackReserveSize>
       <!-- Strict mode: only WindowsApp.lib for system APIs (anything else must be justified in RESEARCH.md). -->
       <!-- ws2_32.lib after WindowsApp.lib: only for the data symbol in6addr_any (overlapped.c); functions still
            resolve through WindowsApp.lib. Kodi links ws2_32 for the same build (docs/RESEARCH.md section 22). -->
-      <AdditionalDependencies>renpy_static.lib;SDL2_image.lib;png.lib;jpeg.lib;$(WebpLibs);avformat.lib;avcodec.lib;swresample.lib;swscale.lib;avutil.lib;python312.lib;zlibstatic.lib;expat_uwp.lib;mpdec_uwp.lib;SDL2.lib;WindowsApp.lib;ws2_32.lib</AdditionalDependencies>
+      <AdditionalDependencies>renpy_static.lib;assimp.lib;SDL2_image.lib;freetype.lib;harfbuzz.lib;fribidi.lib;png.lib;jpeg.lib;$(WebpLibs);avformat.lib;avcodec.lib;swresample.lib;swscale.lib;avutil.lib;python312.lib;zlibstatic.lib;expat_uwp.lib;mpdec_uwp.lib;SDL2.lib;WindowsApp.lib;ws2_32.lib</AdditionalDependencies>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
     </Link>
   </ItemDefinitionGroup>
@@ -137,11 +139,26 @@
     <None Include="SDL2.dll">
       <DeploymentContent>true</DeploymentContent>
     </None>
+    <!-- ANGLE (SternXD fork, deps/angle): OpenGL ES on Direct3D 11, loaded by SDL's WinRT EGL code. -->
+    <None Include="libEGL.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="libGLESv2.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <!-- renpy_base (renpy.py + renpy\common\), staged by CI from out/deps/renpy/renpy-base (git-ignored). -->
+    <None Include="renpy-base\**\*">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
     <!-- Embedded Python: stdlib zip copied here by CI (git-ignored) and the smoke test. -->
     <None Include="python\python312.zip">
       <DeploymentContent>true</DeploymentContent>
     </None>
     <None Include="python\smoke.py">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <!-- Ren'Py launcher (renpy.py equivalent with UWP paths). -->
+    <None Include="python\renpy_uwp_main.py">
       <DeploymentContent>true</DeploymentContent>
     </None>
     <None Include="python\media_test.py">

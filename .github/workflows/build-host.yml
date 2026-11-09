@@ -124,17 +124,45 @@ jobs:
           path: out/deps/media
           key: ${{ steps.cache-media.outputs.cache-primary-key }}
 
+      - name: Restore assimp from cache
+        id: cache-assimp
+        uses: actions/cache/restore@v4
+        with:
+          path: out/deps/assimp
+          key: assimp-uwp-x64-${{ hashFiles('deps/assimp/**') }}
+
+      - name: Build assimp 5.4.3 (glTF + STL importers, static)
+        if: steps.cache-assimp.outputs.cache-hit != 'true'
+        timeout-minutes: 45
+        shell: pwsh
+        run: ./deps/assimp/build.ps1 -Prefix "$env:GITHUB_WORKSPACE/out/deps/assimp" -MediaPrefix "$env:GITHUB_WORKSPACE/out/deps/media"
+
+      - name: Save assimp to cache
+        if: steps.cache-assimp.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: out/deps/assimp
+          key: ${{ steps.cache-assimp.outputs.cache-primary-key }}
+
+      # ANGLE is built by build-angle.yml (slow, ~1 h); its cache is shared within the repository.
+      - name: Restore ANGLE (from the build-angle workflow cache)
+        uses: actions/cache/restore@v4
+        with:
+          path: out/deps/angle
+          key: angle-uwp-x64-${{ hashFiles('deps/angle/**') }}
+          fail-on-cache-miss: true
+
       - name: Restore Ren'Py static modules from cache
         id: cache-renpy
         uses: actions/cache/restore@v4
         with:
           path: out/deps/renpy
-          key: renpy-uwp-x64-${{ hashFiles('renpy/VERSION', 'renpy/uwp/**', 'python/cpython-uwp/**', 'deps/media/**', 'deps/sdl2/*.ps1') }}-py${{ steps.hostpy.outputs.python-version }}
+          key: renpy-uwp-x64-${{ hashFiles('renpy/VERSION', 'renpy/uwp/**', 'python/cpython-uwp/**', 'deps/media/**', 'deps/assimp/**', 'deps/sdl2/*.ps1') }}-py${{ steps.hostpy.outputs.python-version }}
 
       - name: Build Ren'Py static modules (Cython 3.2.4) and renpy.zip
         if: steps.cache-renpy.outputs.cache-hit != 'true'
         shell: pwsh
-        run: ./renpy/uwp/build.ps1 -Prefix "$env:GITHUB_WORKSPACE/out/deps/renpy" -HostPython "${{ steps.hostpy.outputs.python-path }}" -PythonPrefix "$env:GITHUB_WORKSPACE/out/deps/cpython" -SdlPrefix "$env:GITHUB_WORKSPACE/out/deps/sdl2" -MediaPrefix "$env:GITHUB_WORKSPACE/out/deps/media"
+        run: ./renpy/uwp/build.ps1 -Prefix "$env:GITHUB_WORKSPACE/out/deps/renpy" -HostPython "${{ steps.hostpy.outputs.python-path }}" -PythonPrefix "$env:GITHUB_WORKSPACE/out/deps/cpython" -SdlPrefix "$env:GITHUB_WORKSPACE/out/deps/sdl2" -MediaPrefix "$env:GITHUB_WORKSPACE/out/deps/media" -AssimpPrefix "$env:GITHUB_WORKSPACE/out/deps/assimp"
 
       # Saved right after building (not at job end) so a later failure does not throw it away.
       - name: Save renpy to cache
@@ -179,6 +207,11 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item out/deps/sdl2/bin/SDL2.dll host/RenpyUWP/SDL2.dll
+          Copy-Item out/deps/angle/bin/libEGL.dll, out/deps/angle/bin/libGLESv2.dll host/RenpyUWP/
+          Get-Content out/deps/angle/angle-build.json
+          Get-FileHash -Algorithm SHA256 host/RenpyUWP/libEGL.dll, host/RenpyUWP/libGLESv2.dll | Format-Table -AutoSize | Out-String -Width 200
+          if (Test-Path host/RenpyUWP/renpy-base) { Remove-Item -Recurse -Force host/RenpyUWP/renpy-base }
+          Copy-Item -Recurse out/deps/renpy/renpy-base host/RenpyUWP/renpy-base
           Get-Content out/deps/sdl2/sdl2-build.json
 
       - name: Decode signing certificate
@@ -226,6 +259,7 @@ jobs:
             /p:PythonDir="$env:GITHUB_WORKSPACE/out/deps/cpython" `
             /p:MediaDir="$env:GITHUB_WORKSPACE/out/deps/media" `
             /p:RenpyDir="$env:GITHUB_WORKSPACE/out/deps/renpy" `
+            /p:AssimpDir="$env:GITHUB_WORKSPACE/out/deps/assimp" `
             /p:AppxPackageSigningEnabled=false
           if ($LASTEXITCODE -ne 0) { throw "msbuild failed with exit code $LASTEXITCODE" }
           Get-ChildItem -Recurse out/AppPackages | Select-Object FullName, Length | Format-Table -AutoSize | Out-String -Width 300
@@ -276,9 +310,11 @@ jobs:
           Copy-Item out/deps/cpython/licenses/* dist/licenses/
           Copy-Item out/deps/media/licenses/* dist/licenses/
           Copy-Item out/deps/renpy/licenses/* dist/licenses/
+          Copy-Item out/deps/assimp/licenses/* dist/licenses/
+          Copy-Item out/deps/angle/licenses/* dist/licenses/
           $listing = & tar -tf $env:PKG_PATH
           if (-not ($listing -contains 'SDL2.dll')) { throw "SDL2.dll is not at the package root:`n$($listing -join "`n")" }
-          foreach ($f in @('python/python312.zip', 'python/smoke.py', 'python/media_test.py', 'python/renpy.zip', 'python/test/test.png', 'python/test/test.ogg', 'python/test/test-vp9.mkv', 'python/test/test-vp9-10bit.mkv')) {
+          foreach ($f in @('libEGL.dll', 'libGLESv2.dll', 'python/renpy_uwp_main.py', 'renpy-base/renpy.py', 'renpy-base/renpy/common/00start.rpy', 'python/python312.zip', 'python/smoke.py', 'python/media_test.py', 'python/renpy.zip', 'python/test/test.png', 'python/test/test.ogg', 'python/test/test-vp9.mkv', 'python/test/test-vp9-10bit.mkv')) {
             if (-not ($listing -contains $f)) { throw "$f is not in the package:`n$($listing -join "`n")" }
           }
           $vclibs = Get-ChildItem -Recurse out/AppPackages -Filter 'Microsoft.VCLibs.x64.*.appx' |

@@ -1,0 +1,40 @@
+diff -ru a/renpy/display/presplash.py b/renpy/display/presplash.py
+--- a/renpy/display/presplash.py	2026-11-09 10:45:46.711313007 -0500
++++ b/renpy/display/presplash.py	2026-11-09 10:46:01.706169240 -0500
+@@ -98,9 +98,13 @@
+             return
+ 
+     if renpy.windows:
+-        import ctypes
++        # renpy-uwp: no ctypes (and no DPI awareness API) in the UWP sandbox.
++        try:
++            import ctypes
+ 
+-        ctypes.windll.user32.SetProcessDPIAware()  # type: ignore
++            ctypes.windll.user32.SetProcessDPIAware()  # type: ignore
++        except Exception:
++            pass
+ 
+     pygame.display.init()
+ 
+diff -ru a/renpy/translation/__init__.py b/renpy/translation/__init__.py
+--- a/renpy/translation/__init__.py	2026-11-09 10:45:46.718856201 -0500
++++ b/renpy/translation/__init__.py	2026-11-09 10:46:01.706455582 -0500
+@@ -1261,10 +1261,14 @@
+     import locale
+ 
+     if renpy.windows:
+-        import ctypes
++        # renpy-uwp: no ctypes in the UWP sandbox; fall back to the C runtime locale.
++        try:
++            import ctypes
+ 
+-        windll = ctypes.windll.kernel32  # type: ignore
+-        locale_name = locale.windows_locale.get(windll.GetUserDefaultUILanguage())
++            windll = ctypes.windll.kernel32  # type: ignore
++            locale_name = locale.windows_locale.get(windll.GetUserDefaultUILanguage())
++        except ImportError:
++            locale_name = locale.getlocale()[0]
+     elif renpy.android:
+         from jnius import autoclass  # type: ignore
+ 

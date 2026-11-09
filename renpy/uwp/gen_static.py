@@ -11,19 +11,22 @@ renamed to PyInit_<package>_<module>), this writes:
 Same scheme as renpy-build tasks/librenpy.py and runtime/librenpy_inittab3.c.
 
 Usage: python gen_static.py RENPY_ROOT OUT_DIR MODULE_PATTERN [MODULE_PATTERN...]
-  patterns: exact names or prefixes ending in '.*' (e.g. renpy.pygame.*)
+  patterns: exact names, prefixes ending in '.*' (e.g. renpy.pygame.*), '*' for all, and '!pattern'
+  to exclude (e.g. '!renpy.gl2.live2dmodel')
 """
 import sys
 from pathlib import Path
 
 
+def matches(name, p):
+    return p == "*" or name == p or (p.endswith(".*") and name.startswith(p[:-1]))
+
+
 def selected(name, patterns):
-    for p in patterns:
-        if p.endswith(".*") and name.startswith(p[:-1]):
-            return True
-        if name == p:
-            return True
-    return False
+    """Included by some pattern and not excluded by any '!pattern'."""
+    inc = [p for p in patterns if not p.startswith("!")]
+    exc = [p[1:] for p in patterns if p.startswith("!")]
+    return any(matches(name, p) for p in inc) and not any(matches(name, p) for p in exc)
 
 
 def main():
@@ -45,7 +48,9 @@ def main():
             if not path.exists():
                 sys.exit(f"missing source for {name}: {path}")
             sources.append(path)
-    missing = [p for p in patterns if not any(selected(m, [p]) for m in modules)]
+    all_names = [l.partition("#")[0].split()[0] for l in (src / "Setup").read_text().splitlines()
+                 if l.partition("#")[0].strip()]
+    missing = [p for p in patterns if not any(matches(m, p.lstrip("!")) for m in all_names)]
     if missing:
         sys.exit(f"patterns matched no module: {missing}")
 

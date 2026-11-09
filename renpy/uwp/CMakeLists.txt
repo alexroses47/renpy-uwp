@@ -12,6 +12,7 @@ set(GEN_DIR "" CACHE PATH "output of gen_static.py (modules.cmake, renpy_inittab
 set(PYTHON_PREFIX "" CACHE PATH "CPython UWP prefix (include/)")
 set(SDL2_PREFIX "" CACHE PATH "SDL2 prefix (include/SDL2)")
 set(MEDIA_PREFIX "" CACHE PATH "media deps prefix (png, jpeg, freetype, harfbuzz, fribidi, ffmpeg)")
+set(ASSIMP_PREFIX "" CACHE PATH "assimp prefix (include/assimp)")
 
 include(${GEN_DIR}/modules.cmake)
 add_library(renpy_static STATIC ${RENPY_STATIC_SOURCES} ${GEN_DIR}/renpy_inittab.c)
@@ -27,8 +28,9 @@ target_include_directories(renpy_static PRIVATE
   ${MEDIA_PREFIX}/include/freetype2
   ${MEDIA_PREFIX}/include/harfbuzz
   ${MEDIA_PREFIX}/include/fribidi
+  ${ASSIMP_PREFIX}/include
 )
 target_compile_definitions(renpy_static PRIVATE
   Py_NO_ENABLE_SHARED FRIBIDI_STATIC _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS)
-target_compile_options(renpy_static PRIVATE /sdl- /bigobj /we4013)
+target_compile_options(renpy_static PRIVATE /sdl- /bigobj $<$<COMPILE_LANGUAGE:C>:/we4013> $<$<COMPILE_LANGUAGE:CXX>:/EHsc>)
 install(TARGETS renpy_static ARCHIVE DESTINATION lib)

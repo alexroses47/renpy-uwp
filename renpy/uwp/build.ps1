@@ -11,6 +11,7 @@ param(
     [Parameter(Mandatory = $true)][string]$PythonPrefix,
     [Parameter(Mandatory = $true)][string]$SdlPrefix,
     [Parameter(Mandatory = $true)][string]$MediaPrefix,
+    [Parameter(Mandatory = $true)][string]$AssimpPrefix,
     [string]$WorkDir = (Join-Path $env:RUNNER_TEMP 'renpy-uwp')
 )
 
@@ -18,7 +19,10 @@ $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot
 $renpyVersion = (Get-Content (Join-Path $here '..\VERSION')).Trim()
 # Milestone 3: pygame_sdl2 (renpy.pygame), audio/video (renpysound + filter) and _renpy.
-$modules = @('_renpy', 'renpy.audio.renpysound', 'renpy.audio.filter', 'renpy.pygame.*')
+# Every module of src/Setup except Live2D: its header comes from the proprietary Cubism SDK, and
+# renpy/gl2/live2d.py imports it inside try/except ImportError (docs/RESEARCH.md section 31.1).
+# renpy.tfd (tinyfiledialogs) lives in src/Setup.tfd and is not built either (optional import).
+$modules = @('*', '!renpy.gl2.live2dmodel')
 
 function Invoke-Checked([string]$what, [scriptblock]$cmd) {
     & $cmd
@@ -61,7 +65,7 @@ Invoke-Checked 'cmake configure' {
     cmake -S $here -B $build -G 'Visual Studio 17 2022' -A x64 `
         '-DCMAKE_SYSTEM_NAME=WindowsStore' '-DCMAKE_SYSTEM_VERSION=10.0.22621.0' `
         "-DRENPY_ROOT=$src" "-DGEN_DIR=$gen" "-DPYTHON_PREFIX=$PythonPrefix" "-DSDL2_PREFIX=$SdlPrefix" `
-        "-DMEDIA_PREFIX=$MediaPrefix" "-DCMAKE_INSTALL_PREFIX=$Prefix" | Out-Host
+        "-DMEDIA_PREFIX=$MediaPrefix" "-DASSIMP_PREFIX=$AssimpPrefix" "-DCMAKE_INSTALL_PREFIX=$Prefix" | Out-Host
 }
 Invoke-Checked 'cmake build' { cmake --build $build --config Release --parallel -- /nologo /v:minimal | Out-Host }
 Invoke-Checked 'cmake install' { cmake --install $build --config Release | Out-Host }
@@ -72,6 +76,17 @@ Invoke-Checked 'vc_version' { & $py -I (Join-Path $here 'write_vc_version.py') $
 Invoke-Checked 'renpy.zip' {
     & $py -I (Join-Path $here '..\..\python\cpython-uwp\make_stdlib_zip.py') $src (Join-Path $Prefix 'renpy.zip') --only renpy | Out-Host
 }
+# renpy-base: the directory Ren'Py treats as renpy_base. It holds renpy.py (whose path_to_* functions
+# the UWP launcher reuses) and renpy/common/ as a real folder (renpy.py path_to_common requires
+# isdir; .rpy, fonts and images loaded by the script loader). The .py code stays in renpy.zip.
+$base = Join-Path $Prefix 'renpy-base'
+if (Test-Path $base) { Remove-Item -Recurse -Force $base }
+New-Item -ItemType Directory -Force (Join-Path $base 'renpy') | Out-Null
+Copy-Item (Join-Path $src 'renpy.py') $base
+Copy-Item -Recurse (Join-Path $src 'renpy\common') (Join-Path $base 'renpy\common')
+Get-ChildItem -Recurse -File (Join-Path $base 'renpy\common') -Include '*.pyc', '*.rpyc', '*.rpymc' | Remove-Item
+Write-Host "renpy-base: $((Get-ChildItem -Recurse -File $base).Count) files"
+
 New-Item -ItemType Directory -Force (Join-Path $Prefix 'licenses') | Out-Null
 # Ren'Py has no LICENSE file at the root: the terms are in sphinx/source/license.rst (and MIT headers).
 Copy-Item (Join-Path $src 'sphinx\source\license.rst') (Join-Path $Prefix 'licenses\RenPy-license.rst')

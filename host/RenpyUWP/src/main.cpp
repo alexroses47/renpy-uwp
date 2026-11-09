@@ -33,7 +33,7 @@
 
 namespace {
 
-constexpr char kHostVersion[] = "milestone-3";
+constexpr char kHostVersion[] = "milestone-4";
 
 const float kColors[][4] = {
     {0.00f, 0.35f, 0.40f, 1.0f},  // teal (milestone 0 color)
@@ -146,6 +146,12 @@ public:
         // Python owns the window while it runs (pygame display; later Ren'Py): SDL on WinRT supports a
         // single window and video calls only on this thread. The HDMI mode set above stays active.
         if (!RunPython(coreWindow)) return 1;
+        if (m_exitAfterPython) {
+            RLOG("restoring the system display mode");
+            renpyuwp::display::RestoreDefault();
+            SDL_Quit();
+            return 0;
+        }
 
         RLOG("entering main loop (A/B: color, X: fps+vram report, Y: storage probe, View: system HDMI mode, "
              "Menu: re-apply 4K120/1440p, RB: diagnostic mode matrix)");
@@ -425,9 +431,15 @@ private:
         m_renderer.Shutdown();
         SDL_DestroyWindow(m_window);
         m_window = nullptr;
-        // smoke: interpreter/stdlib/files (python.log); media_test: pygame_sdl2 PNG, OGG, VP9 (media-test.log).
-        const char* entries[] = {"smoke.main", "media_test.main"};
+        // smoke: interpreter/stdlib/files (python.log). renpy_uwp_main: starts the game chosen in
+        // LocalState\renpy-uwp.ini (renpy-launcher.log); returns non-zero if no game could be started.
+        const char* entries[] = {"smoke.main", "renpy_uwp_main.main"};
         int failures = renpyuwp::python::RunBlocking(localState, install, entries, 2);
+        if (failures == 0) {
+            RLOG("python: Ren'Py finished; exiting the app");
+            m_exitAfterPython = true;
+            return true;
+        }
         RLOG("python: back in the host (%d failing entries); recreating the host window", failures);
         m_window = SDL_CreateWindow("Ren'Py UWP", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 1920, 1080, 0);
         if (!m_window) {
@@ -665,6 +677,7 @@ private:
     renpyuwp::display::Mode m_activeMode;
     bool m_haveHdmi = false;
     bool m_running = true;
+    bool m_exitAfterPython = false;
 };
 
 int SdlMain(int, char**) {

@@ -1,6 +1,6 @@
 diff -ru a/src/ffmedia.c b/src/ffmedia.c
---- a/src/ffmedia.c	2026-11-09 02:53:29.985172839 -0500
-+++ b/src/ffmedia.c	2026-11-09 02:53:30.043493758 -0500
+--- a/src/ffmedia.c	2026-11-09 10:45:46.566018285 -0500
++++ b/src/ffmedia.c	2026-11-09 10:45:46.824104216 -0500
 @@ -42,7 +42,8 @@
  // Ren'Py needs some padding), FRAME_PADDING * BPS has to be a multiple of
  // 16 (alignment issues on ARM NEON), and has to match the crop in the
@@ -12,8 +12,8 @@ diff -ru a/src/ffmedia.c b/src/ffmedia.c
  const int SPEED = 1;
  
 diff -ru a/src/pygame/SDL_gfxPrimitives.c b/src/pygame/SDL_gfxPrimitives.c
---- a/src/pygame/SDL_gfxPrimitives.c	2026-11-09 02:53:29.986729506 -0500
-+++ b/src/pygame/SDL_gfxPrimitives.c	2026-11-09 02:53:30.043968700 -0500
+--- a/src/pygame/SDL_gfxPrimitives.c	2026-11-09 10:45:46.567192647 -0500
++++ b/src/pygame/SDL_gfxPrimitives.c	2026-11-09 10:45:46.824546162 -0500
 @@ -3960,7 +3960,8 @@
  /* ----- AA Ellipse */
  
@@ -24,9 +24,25 @@ diff -ru a/src/pygame/SDL_gfxPrimitives.c b/src/pygame/SDL_gfxPrimitives.c
  /* Detect 64bit and use intrinsic version */
  #ifdef _M_X64
  #include <emmintrin.h>
+diff -ru a/src/renpybidicore.c b/src/renpybidicore.c
+--- a/src/renpybidicore.c	2026-11-09 10:45:46.567898708 -0500
++++ b/src/renpybidicore.c	2026-11-09 10:45:51.393867891 -0500
+@@ -5,8 +5,12 @@
+ #include <stdlib.h>
+ 
+ #ifndef alloca
++#ifdef _MSC_VER
++#include <malloc.h> /* renpy-uwp: MSVC has alloca in malloc.h, no alloca.h */
++#else
+ #include <alloca.h>
+ #endif
++#endif
+ 
+ #if PY_VERSION_HEX > 0x030300f0
+ 
 diff -ru a/src/renpysound_core.c b/src/renpysound_core.c
---- a/src/renpysound_core.c	2026-11-09 02:53:29.985132291 -0500
-+++ b/src/renpysound_core.c	2026-11-09 02:53:30.043059209 -0500
+--- a/src/renpysound_core.c	2026-11-09 10:45:46.567964830 -0500
++++ b/src/renpysound_core.c	2026-11-09 10:45:46.824938403 -0500
 @@ -21,6 +21,7 @@
  WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
