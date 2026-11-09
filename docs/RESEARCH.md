@@ -788,3 +788,33 @@ Ningún códec externo (libvpx/libopus/libvorbis no hacen falta: FFmpeg trae dec
   `renpy-uwp.ini`) y baja a 1080p60 si el modo supera 1440p. **Hito 5:** parchear ANGLE para que respete
   `EGLRenderSurfaceSizeProperty` en Xbox, parchear SDL WinRT para pasar un `PropertySet` con 2560x1440 y añadir
   `GL_GetDrawableSize` (SDL 2.0.20 devuelve el tamaño de la ventana, no el de la superficie EGL).
+
+## 32. Hito 5 — investigación sobre KS:RE (v2.0.5, código MPL-2.0 de codeberg.org/fhs/katawa-shoujo-re-engineered, tag `v2.0.5`)
+
+Leído desde el repo (solo código; nada se copia ni se commitea). La copia de Steam del usuario es 2.0.5 sobre Ren'Py
+8.5.3.26051504 (su `log.txt`). `game/` ocupa 1,4 GB (`.rpa`: audio, fonts, images, nsfw, scripts, videos).
+
+### 32.1 Resolución e interfaz
+- `game/config.rpy:6`: `gui.init(1920, 1080)`, es decir, **1080p virtual**. Ren'Py dibuja a la resolución física (texto y UI
+  vectorial nítidos a cualquier tamaño). Las imágenes de origen son de 1080p o menos, así que renderizar a 1440p solo mejora
+  el texto y el escalado; con salida 1080p la TV reescala igual.
+- No hay variante `tv` ni `pc` específica: solo `touch` (`config.rpy:92`, `screens.rpy:329`), que en Xbox no aplica.
+  `config.controller_blocklist = []` (`config.rpy:81`): usa la navegación con mando estándar de Ren'Py.
+
+### 32.2 Dependencias de escritorio y cómo neutralizarlas (sin tocar el juego)
+| Elemento | Código | En UWP | Acción |
+|---|---|---|---|
+| Steam | `achievement.rpy:1` `config.steam_appid = "3068300"` → `renpy/common/00steam.rpy` carga la DLL de Steam con `ctypes` | «Failed to initialize steam: No module named '_ctypes'», ya visto con The Question; Ren'Py sigue sin logros de Steam | nada (degradación prevista por Ren'Py) |
+| Discord | `definitions.rpy:14` (`python early`) `from pypresence import Presence`; `RPCThread` (hilo daemon) se arranca en `init 999` (`definitions.rpy:393`) y hace `Presence.connect()` | busca `\\?\pipe\discord-ipc-*`. En escritorio sin Discord ya lanza `DiscordNotFound` en el hilo y el juego sigue (log del usuario en Linux) | el lanzador registra un `pypresence` mínimo en `sys.modules` cuyo `connect()` lanza `DiscordNotFound`: el hilo termina sin tocar named pipes del sandbox. No modifica `game/` |
+| ctypes | KS:RE no lo usa | — | Ren'Py ya parcheado (§31.4) |
+| Rutas de escritorio | `nsfw.rpy` usa `ANDROID_PUBLIC` y `RENPY_SEARCHPATH` (parche NSFW opcional); `options.rpy:47` `KSRE_STORE` (solo build) | sin efecto | nada |
+| presplash | `game/presplash_{background,foreground}.png` | `renpy/display/presplash.py` crea una ventana SDL sin GL antes de la ventana GL. Su `ctypes` ya está protegido (parche 0002) | vigilar en la primera prueba (SDL WinRT tiene una sola ventana) |
+- Paquetes Python: el juego trae **`game/python-packages/pypresence` 4.6.1** (Ren'Py añade `game/python-packages` a
+  `sys.path`). `ecdsa`, `rsa` y `six` son de Ren'Py y ya van en `site-packages.zip` (§31.7). No hace falta nada más del USB.
+- Escritura en `game/`: KS:RE trae los `.rpyc` en `scripts.rpa`, así que no compila nada. Ren'Py no puede escribir
+  `game/cache` en el USB (visto con The Question: `shaders.txt.tmp` no se crea), lo cual es inofensivo. Con la copia en
+  LocalState sí podrá.
+
+### 32.3 Referencias
+- `lasscat/ksre-ps5` (GPL-3.0): port en curso de KS:RE a PS5 con el mismo Ren'Py 8.5.3/CPython 3.12. Por ahora es solo
+  investigación. Solo se consulta; no se copia código.
