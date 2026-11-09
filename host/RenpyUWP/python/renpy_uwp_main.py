@@ -59,6 +59,55 @@ def find_games():
 _logdir = None
 
 
+def install_platform_stubs():
+    """Modules that cannot work on Xbox, replaced before the game runs (no change to the game files).
+
+    pypresence (Discord Rich Presence; KS:RE ships it in game/python-packages and starts a thread that
+    calls Presence.connect()): Discord is not available on the console and its IPC named pipes are
+    outside the sandbox, so connect() raises DiscordNotFound immediately, as on a PC without Discord.
+    The public names KS:RE and pypresence users import are provided (docs/RESEARCH.md section 32.2).
+    """
+    import types
+
+    if "pypresence" in sys.modules:
+        return
+    m = types.ModuleType("pypresence", "renpy-uwp stub: Discord Rich Presence is not available on Xbox")
+
+    class PyPresenceException(Exception):
+        pass
+
+    names = {"PyPresenceException": PyPresenceException}
+    for n in ("DiscordNotFound", "InvalidPipe", "InvalidArgument", "ServerError", "DiscordError",
+              "ArgumentError", "EventNotFound", "PipeClosed", "ResponseTimeout", "ConnectionTimeout"):
+        names[n] = type(n, (PyPresenceException,), {"__module__": "pypresence"})
+    names["InvalidID"] = type("InvalidID", (names["DiscordError"],), {"__module__": "pypresence"})
+
+    class Presence:
+        def __init__(self, client_id=None, *args, **kwargs):
+            self.client_id = client_id
+
+        def connect(self, *args, **kwargs):
+            raise names["DiscordNotFound"]("Discord is not available on Xbox (renpy-uwp)")
+
+        def update(self, *args, **kwargs):
+            raise names["PipeClosed"]("not connected")
+
+        def clear(self, *args, **kwargs):
+            raise names["PipeClosed"]("not connected")
+
+        def close(self, *args, **kwargs):
+            pass
+
+    names.update(Presence=Presence, AioPresence=Presence, Client=Presence, AioClient=Presence, BaseClient=Presence)
+    for k, v in names.items():
+        v.__module__ = "pypresence"
+        setattr(m, k, v)
+    m.exceptions = m
+    sys.modules["pypresence"] = m
+    sys.modules["pypresence.exceptions"] = m
+
+
+
 def path_to_logdir(_basedir):
     """Replaces renpy.py's path_to_logdir (which returns the game's basedir, on the USB drive).
     A module-level function: Ren'Py pickles the globals of modules named renpy* (renpy/__init__.py backup)."""
@@ -119,6 +168,8 @@ def run(localstate, install):
         sys.path.append(site_zip)
 
     # Ren'Py's own launcher module: bootstrap() calls renpy.__main__.path_to_gamedir & co.
+    install_platform_stubs()
+
     # Its module name must not start with "renpy": Ren'Py backs up (pickles) the globals of those modules.
     global _logdir
     _logdir = logdir
