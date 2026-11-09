@@ -1,0 +1,51 @@
+diff -ru a/src/ffmedia.c b/src/ffmedia.c
+--- a/src/ffmedia.c	2026-11-09 02:53:29.985172839 -0500
++++ b/src/ffmedia.c	2026-11-09 02:53:30.043493758 -0500
+@@ -42,7 +42,8 @@
+ // Ren'Py needs some padding), FRAME_PADDING * BPS has to be a multiple of
+ // 16 (alignment issues on ARM NEON), and has to match the crop in the
+ // read_video function of renpysound.pyx.
+-const int FRAME_PADDING = ROW_ALIGNMENT / 4;
++// renpy-uwp: a C const int is not a constant expression for MSVC; same value (ROW_ALIGNMENT / 4).
++const int FRAME_PADDING = 16 / 4;
+ 
+ const int SPEED = 1;
+ 
+diff -ru a/src/pygame/SDL_gfxPrimitives.c b/src/pygame/SDL_gfxPrimitives.c
+--- a/src/pygame/SDL_gfxPrimitives.c	2026-11-09 02:53:29.986729506 -0500
++++ b/src/pygame/SDL_gfxPrimitives.c	2026-11-09 02:53:30.043968700 -0500
+@@ -3960,7 +3960,8 @@
+ /* ----- AA Ellipse */
+ 
+ /* Windows targets do not have lrint, so provide a local inline version */
+-#if defined(_MSC_VER)
++/* renpy-uwp: MSVC 2013+ (_MSC_VER 1800) has lrint as an intrinsic. */
++#if defined(_MSC_VER) && _MSC_VER < 1800
+ /* Detect 64bit and use intrinsic version */
+ #ifdef _M_X64
+ #include <emmintrin.h>
+diff -ru a/src/renpysound_core.c b/src/renpysound_core.c
+--- a/src/renpysound_core.c	2026-11-09 02:53:29.985132291 -0500
++++ b/src/renpysound_core.c	2026-11-09 02:53:30.043059209 -0500
+@@ -21,6 +21,7 @@
+ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+ 
++#include <malloc.h> /* renpy-uwp: _alloca */
+ #include "renpysound_core.h"
+ #include <Python.h>
+ #include <SDL2/SDL.h>
+@@ -422,9 +423,10 @@
+     // Convert the length to samples.
+     length /= (2 * sizeof(float));
+ 
+-    float mix_buffer[length * 2];
+-    short stream_buffer[length * 2];
+-    float float_buffer[length * 2];
++    // renpy-uwp: MSVC has no variable-length arrays; use stack allocations of the same size.
++    float *mix_buffer = (float *) _alloca(length * 2 * sizeof(float));
++    short *stream_buffer = (short *) _alloca(length * 2 * sizeof(short));
++    float *float_buffer = (float *) _alloca(length * 2 * sizeof(float));
+ 
+     memset(mix_buffer, 0, length * 2 * sizeof(float));
+ 

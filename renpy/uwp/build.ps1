@@ -28,7 +28,13 @@ function Invoke-Checked([string]$what, [scriptblock]$cmd) {
 New-Item -ItemType Directory -Force $WorkDir, $Prefix | Out-Null
 $src = Join-Path $WorkDir 'renpy'
 if (Test-Path $src) { Remove-Item -Recurse -Force $src }
-Invoke-Checked 'clone renpy' { git clone -q --depth 1 --branch $renpyVersion https://github.com/renpy/renpy.git $src }
+# autocrlf off: keep LF so our patches apply byte-for-byte.
+Invoke-Checked 'clone renpy' { git -c core.autocrlf=false clone -q --depth 1 --branch $renpyVersion https://github.com/renpy/renpy.git $src }
+# MSVC compatibility patches for Ren'Py's C sources (Ren'Py builds Windows with clang/MinGW).
+foreach ($p in Get-ChildItem (Join-Path $PSScriptRoot 'patches') -Filter *.diff | Sort-Object Name) {
+    Write-Host "Applying $($p.Name)"
+    Invoke-Checked "apply $($p.Name)" { git -C $src apply --verbose $p.FullName }
+}
 
 $venv = Join-Path $WorkDir 'venv'
 Invoke-Checked 'venv' { & $HostPython -m venv $venv }
