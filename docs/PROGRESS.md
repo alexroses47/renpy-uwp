@@ -115,3 +115,31 @@
 **Siguiente paso**
 - Hito 3 (dependencias C + pygame_sdl2): investigar primero en RESEARCH (recetas de renpy-build, versiones, ANGLE SternXD,
   FFmpeg LGPL, SDL2_image), incluir bz2/xz si son baratos. No empezar sin la confirmación del usuario.
+
+## 2026-11-09 — Hito 3 (dependencias C + pygame_sdl2), sesión 4
+
+**Hecho**
+- Investigación en RESEARCH §25–29 (inventario de medios de KS:RE, versiones de renpy-build, ANGLE SternXD, Ren'Py estático,
+  notas para el Hito 4).
+- ANGLE (SternXD, `target_os="winuwp"`, solo D3D11) compila en CI con caché (`build-angle.yml`, 2 iteraciones). Aún no se empaqueta.
+- Dependencias de medios en CI con caché: libpng, libjpeg-turbo, libwebp, freetype+harfbuzz, fribidi, SDL2_image, FFmpeg 4.3.1
+  LGPL (solo matroska/ogg, vp9/opus/vorbis; configure confirma `HAVE_X86ASM 1` y `HAVE_AVX2_EXTERNAL 1`).
+- Módulos de Ren'Py 8.5.3 estáticos (Cython 3.2.4): `_renpy`, `renpy.audio.renpysound`, `renpy.audio.filter`, `renpy.pygame.*`,
+  con un parche de compatibilidad MSVC (`renpy/uwp/patches/0001-msvc-compat.diff`) y `vc_version.py` generado desde el tag.
+- 14 iteraciones de build-host. Fallos corregidos: `tar` colgado ~2 h con `.tar.xz` (→ `tarfile` de Python); fribidi 1.0.7 usa
+  `FRIBIDI_STATIC`; configure de FFmpeg ejecutaba pruebas UWP (→ `--enable-cross-compile`); `-lz` = `zlib.lib` con MSVC;
+  `zconf.h` y `HAVE_UNISTD_H 0`; `setuplib` leía `.pyx` en cp1252 (→ `PYTHONUTF8=1`); VLA, `const int` y `lrint` en el C de
+  Ren'Py; parche en CRLF (→ `.gitattributes`); nombres `lib*.lib` de libwebp. Cachés guardadas tras cada build.
+- **En la Xbox (0.0.37.0):** pila de 8192 KB registrada; `renpy` 8.5.3.26051504 y `renpy.pygame` (WinRT, SDL 2.0.20) cargan;
+  **PNG dibujado** (ventana `winrt` 1920x1080 sin GL); **benchmark VP9 1080p: 8 bits 774 fps, 10 bits 565 fps (202 fps con
+  RGBA), threads=9 (frame)** con medios sintéticos.
+
+**Falló**
+- Reproducción vía `renpysound` (OGG y vídeo): el canal termina enseguida con duración 0, y en vídeo `python_read` lee un
+  archivo cerrado (0 frames). FFmpeg decodifica bien abriendo por ruta (benchmark), así que el problema está en el camino
+  RWops/ffmedia, aún sin diagnosticar.
+- La ventana GL de pygame_sdl2 necesita ANGLE empaquetado (Hito 4); el test usa `renpy.pygame_AVOID_GL`.
+
+**Siguiente paso**
+- Diagnosticar `renpysound` con más registro (errores de `RPS`, lectura vía RWops, BytesIO frente a archivo); requiere iteraciones
+  de CI más allá del límite de ~15, pendientes de la aprobación del usuario.
