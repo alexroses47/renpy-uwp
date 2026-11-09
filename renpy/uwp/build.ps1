@@ -66,6 +66,8 @@ Invoke-Checked 'cmake configure' {
 Invoke-Checked 'cmake build' { cmake --build $build --config Release --parallel -- /nologo /v:minimal | Out-Host }
 Invoke-Checked 'cmake install' { cmake --install $build --config Release | Out-Host }
 
+Invoke-Checked 'vc_version' { & $py -I (Join-Path $here 'write_vc_version.py') $src $renpyVersion }
+
 # Pure-Python Ren'Py package (renpy/**/*.py) as .pyc in a zip, like the stdlib.
 Invoke-Checked 'renpy.zip' {
     & $py -I (Join-Path $here '..\..\python\cpython-uwp\make_stdlib_zip.py') $src (Join-Path $Prefix 'renpy.zip') --only renpy | Out-Host

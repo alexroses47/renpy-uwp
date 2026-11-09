@@ -36,6 +36,10 @@ def main():
         import renpy.pygame as pygame
         print("pygame_sdl2 (renpy.pygame) platform:", pygame.get_platform(), "| SDL", pygame.get_sdl_version())
 
+        # pygame_sdl2 creates an OpenGL window unless told otherwise (display.pyx); on WinRT that
+        # needs ANGLE's libEGL.dll, which is packaged with the GL renderer in milestone 4. This test
+        # only blits 2D surfaces, so use SDL's non-GL window framebuffer.
+        pygame.display.hint("renpy.pygame_AVOID_GL", "1")
         pygame.display.init()
         screen = pygame.display.set_mode((1920, 1080))
         print("display: window", screen.get_size(), "| driver:", getattr(pygame.display, "get_driver", lambda: "?")())
