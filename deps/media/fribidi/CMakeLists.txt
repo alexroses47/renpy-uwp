@@ -12,7 +12,8 @@ file(GLOB FRIBIDI_SOURCES ${FRIBIDI_SRC}/lib/*.c)
 add_library(fribidi STATIC ${FRIBIDI_SOURCES})
 target_include_directories(fribidi PRIVATE ${FRIBIDI_SRC}/lib ${CMAKE_CURRENT_SOURCE_DIR}/include
                                     PUBLIC  ${CMAKE_CURRENT_BINARY_DIR}/include)
-target_compile_definitions(fribidi PRIVATE HAVE_CONFIG_H FRIBIDI_LIB_STATIC _CRT_SECURE_NO_WARNINGS)
+# fribidi 1.0.7 spells the static switch FRIBIDI_STATIC (FRIBIDI_LIB_STATIC is from later versions).
+target_compile_definitions(fribidi PRIVATE HAVE_CONFIG_H _CRT_SECURE_NO_WARNINGS PUBLIC FRIBIDI_STATIC)
 
 # fribidi-config.h is generated from the upstream template with the values meson would use.
 file(READ ${FRIBIDI_SRC}/lib/fribidi-config.h.in cfg)

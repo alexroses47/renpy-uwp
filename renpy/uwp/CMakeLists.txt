@@ -29,6 +29,6 @@ target_include_directories(renpy_static PRIVATE
   ${MEDIA_PREFIX}/include/fribidi
 )
 target_compile_definitions(renpy_static PRIVATE
-  Py_NO_ENABLE_SHARED FRIBIDI_LIB_STATIC _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS)
+  Py_NO_ENABLE_SHARED FRIBIDI_STATIC _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS)
 target_compile_options(renpy_static PRIVATE /sdl- /bigobj /we4013)
 install(TARGETS renpy_static ARCHIVE DESTINATION lib)
