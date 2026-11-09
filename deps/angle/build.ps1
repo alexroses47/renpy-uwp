@@ -49,15 +49,26 @@ try {
     Invoke-Checked 'bootstrap' { python scripts/bootstrap.py }
     Invoke-Checked 'gclient sync' { cmd /c "gclient sync --no-history --shallow -j 8" }
 
-    $args = @(
-        'target_os="winuwp"', 'target_cpu="x64"', 'is_debug=false', 'is_component_build=false',
-        'symbol_level=0', 'dcheck_always_on=false',
-        'angle_enable_d3d11=true', 'angle_enable_d3d9=false', 'angle_enable_gl=false',
-        'angle_enable_vulkan=false', 'angle_enable_null=false', 'angle_enable_swiftshader=false',
-        'angle_enable_wgpu=false', 'angle_build_tests=false', 'angle_has_frame_capture=false'
-    ) -join ' '
-    Write-Host "gn args: $args"
-    Invoke-Checked 'gn gen' { cmd /c "gn gen out\uwp --args=""$args""" }
+    # gn args go to out\uwp\args.gn (gn's own mechanism). NOTE: never name this $args: that is a
+    # PowerShell automatic variable and is empty inside Invoke-Checked's script block. The first
+    # CI builds did that and silently produced a default (debug, component, Dawn/Vulkan) ANGLE.
+    $gnArgs = @(
+        'target_os = "winuwp"', 'target_cpu = "x64"', 'is_debug = false', 'is_component_build = false',
+        'symbol_level = 0', 'dcheck_always_on = false',
+        'angle_enable_d3d11 = true', 'angle_enable_d3d9 = false', 'angle_enable_gl = false',
+        'angle_enable_vulkan = false', 'angle_enable_null = false', 'angle_enable_swiftshader = false',
+        'angle_enable_wgpu = false', 'angle_build_tests = false', 'angle_has_frame_capture = false'
+    )
+    New-Item -ItemType Directory -Force 'out\uwp' | Out-Null
+    Set-Content -Encoding ascii -Path 'out\uwp\args.gn' -Value ($gnArgs -join "`n")
+    Write-Host "args.gn:`n$($gnArgs -join "`n")"
+    Invoke-Checked 'gn gen' { cmd /c "gn gen out\uwp" }
+    # Fail early if gn did not take the arguments.
+    $effective = cmd /c "gn args out\uwp --list --short --overrides-only"
+    Write-Host "gn effective overrides:`n$($effective -join "`n")"
+    foreach ($must in 'is_debug = false', 'is_component_build = false', 'target_os = "winuwp"', 'angle_enable_wgpu = false') {
+        if (-not ($effective -contains $must)) { throw "gn did not apply: $must" }
+    }
     Invoke-Checked 'ninja' { cmd /c "autoninja -C out\uwp libEGL libGLESv2" }
 } finally { Pop-Location }
 
@@ -71,8 +82,20 @@ foreach ($inc in 'EGL', 'GLES2', 'GLES3', 'KHR') {
     Copy-Item -Recurse (Join-Path $src "include\$inc") (Join-Path $Prefix 'include')
 }
 Copy-Item (Join-Path $src 'LICENSE') (Join-Path $Prefix 'licenses\ANGLE-LICENSE.txt')
-@{ name = 'ANGLE'; fork = $AngleUrl; commit = $AngleCommit; gn_args = $args } |
+@{ name = 'ANGLE'; fork = $AngleUrl; commit = $AngleCommit; gn_args = ($gnArgs -join '; ') } |
     ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $Prefix 'angle-build.json')
 Get-ChildItem -Recurse -File (Join-Path $Prefix 'bin') | ForEach-Object {
     Write-Host ("{0}  {1}  sha256={2}" -f $_.Name, $_.Length, (Get-FileHash -Algorithm SHA256 $_.FullName).Hash)
+}
+
+# The DLLs must be self-contained UWP binaries: release CRT (*_app), no component-build DLLs, no Dawn.
+$dumpbin = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio\2022" -Recurse -Filter dumpbin.exe -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -match 'Hostx64\\x64' } | Select-Object -First 1
+if (-not $dumpbin) { throw 'dumpbin.exe not found' }
+foreach ($n in 'libEGL', 'libGLESv2') {
+    $deps = & $dumpbin.FullName /nologo /dependents (Join-Path $Prefix "bin\$n.dll") |
+        Where-Object { $_ -match '^\s+\S+\.dll\s*$' } | ForEach-Object { $_.Trim() }
+    Write-Host "$n.dll imports: $($deps -join ', ')"
+    $bad = $deps | Where-Object { $_ -match '(?i)(140D|ucrtbased|libc\+\+|absl|dawn|third_party|vulkan|^USER32|^GDI32)' }
+    if ($bad) { throw "$n.dll has non-UWP/debug/component dependencies: $($bad -join ', ')" }
 }

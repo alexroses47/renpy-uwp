@@ -58,6 +58,16 @@ for it in json.load(sys.stdin).get("Items", []):
     dp_die "could not list LocalState"
 fi
 
+# --file may name a file in a LocalState subfolder, e.g. logs/the_question/log.txt
+subdir=""
+if [[ "$file" == */* || "$file" == *\\* ]]; then
+    file="${file//\\//}"
+    subdir="\\${file%/*}"
+    subdir="${subdir//\//\\}"
+    file="${file##*/}"
+    path_variants=("\\LocalState$subdir")
+fi
+
 mkdir -p "$ROOT/logs"
 stamp="$(date +%Y%m%d-%H%M%S)"
 dest="$ROOT/logs/${file%.*}-$stamp.${file##*.}"
