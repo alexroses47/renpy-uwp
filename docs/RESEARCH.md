@@ -689,3 +689,77 @@ Ningún códec externo (libvpx/libopus/libvorbis no hacen falta: FFmpeg trae dec
 - **Alternativa descartada:** FFmpeg como DLLs (`--enable-shared`) junto a `SDL2.dll`. Era más clara para la LGPL, pero
   costaba más iteraciones de CI y no aporta nada técnico.
 - **FriBidi** (LGPL-2.1), cuando se enlace en el Hito 4 (`renpy.text.bidi`), seguirá el mismo esquema.
+
+## 31. Hito 4 — investigación (Ren'Py 8.5.3.26051504, verificado en el código del tag)
+
+### 31.1 Módulos C/Cython
+- `src/Setup` lista **62 módulos**. El Hito 3 compiló 22: `_renpy`, `renpy.audio.*` y `renpy.pygame.*`. Faltan `renpy.astsupport`,
+  `cslots`, `lexersupport`, `pydict`, `style`, `encryption`, `styledata.*` (12), `display.{matrix,render,accelerator,quaternion}`,
+  `uguu.{gl,uguu}`, `gl2.*` (11, incluidos `assimp` y `live2dmodel`) y `text.{textsupport,texwrap,ftfont,hbfont,bidi}`.
+- `renpy.tfd` (tinyfiledialogs, `src/Setup.tfd`) **se excluye**: `renpy/__init__.py:586-590` lo importa dentro de
+  `try/except ImportError`.
+- **assimp es obligatorio**: `renpy/__init__.py:567` hace `import renpy.gl2.assimp` sin protección. Se compila assimp
+  **v5.4.3** con la receta de renpy-build (`tasks/assimp.py`): estático, C++17, `ASSIMP_NO_EXPORT`, sin tests, zlib propio
+  apagado, **solo los importadores glTF y STL**. Se aplica `patches/assimp.diff`, que toca `poly2tri` y `unzip/ioapi.c`.
+  Licencia BSD-3-Clause. Va en una caché propia para no recompilar FFmpeg.
+- `live2dmodel` (`src/live2dcsm.c`) carga Cubism en tiempo de ejecución con `SDL_LoadObject`. Si no hay DLL, Live2D no está
+  disponible, lo mismo que en una instalación de escritorio sin Cubism.
+- `renpy.text.bidi` (`renpybidicore.c`) incluye `<alloca.h>`, que no existe en MSVC: se añade al parche de compatibilidad
+  (`<malloc.h>`). FreeType y HarfBuzz se enlazan como `freetypehb.lib`; el orden de compilación de las dos ya está en
+  `deps/media`.
+
+### 31.2 ANGLE y el contexto GL
+- SDL 2.0.20 (`src/video/winrt/SDL_winrtopengles.cpp:55-170`): carga `libEGL.dll` y `libGLESv2.dll` (`SDL_egl.c:72-73`).
+  Si no existe `CreateWinrtEglWindow` (ANGLE antiguo), usa `eglGetPlatformDisplayEXT(EGL_PLATFORM_ANGLE_ANGLE)` con D3D11
+  (FL 10_0+, luego 9_3, luego WARP) y crea la superficie sobre la `CoreWindow`.
+- El fork `SternXD/angle@45b0b1e0` conserva `src/libANGLE/renderer/d3d/d3d11/winrt/CoreWindowNativeWindow.*` y
+  `SwapChainPanelNativeWindow.*` (consultado en el árbol de GitHub del commit). La build de CI (§27) ya produce las dos
+  DLLs. **Se empaquetan junto a `SDL2.dll`** desde la caché o el artefacto de `build-angle.yml`, con SHA-256 registrado.
+- Ren'Py (`renpy/display/core.py:1099-1112`) en Windows prueba `gl2` → `angle2` → `gles2`. `renpy.windows` es True en UWP
+  (`sys.platform == "win32"`). SDL WinRT solo ofrece GLES, así que el lanzador fija **`RENPY_RENDERER=gles2`** para no intentar
+  OpenGL de escritorio. `gl2draw.pyx:292-296` pide **GLES 3.0** con `SDL_OPENGL_ES_DRIVER=1`, que ANGLE D3D11 soporta.
+  `uguu` obtiene las funciones GL con `SDL_GL_GetProcAddress`.
+- Hito 5: `CoreWindowNativeWindow` admite `EGLRenderSurfaceSizeProperty` (tamaño de superficie distinto del de la
+  ventana), que es la vía para 2560x1440. Queda fuera del Hito 4.
+
+### 31.3 Arranque (equivalente a `renpy.py`)
+- `renpy.py` define `path_to_gamedir`, `path_to_common`, `path_to_saves`, `path_to_logdir` y `predefined_searchpath`, y llama
+  a `renpy.bootstrap.bootstrap(renpy_base)`. `bootstrap.py` usa `renpy.__main__.<función>`, así que **nuestro lanzador
+  (`python/renpy_uwp_main.py`) reimplementa esas funciones** sin parchear Ren'Py:
+  - `renpy_base` = la carpeta `renpy-base` del paquete (solo lectura), que contiene **`renpy/common/` como carpeta real**
+    (5,5 MB de `.rpy`, fuentes e imágenes). `path_to_common` exige `os.path.isdir`. El código `.py` de Ren'Py sigue en
+    `renpy.zip`.
+  - `basedir` = carpeta del juego en el USB (`E:\renpy\games\<juego>`), elegida por el host. `gamedir` = `<basedir>\game`.
+  - Partidas: `RENPY_PATH_TO_SAVES` = `LocalState\saves` (`renpy.py`, `path_to_saves`).
+  - Logs (`log.txt`, `traceback.txt`): `path_to_logdir` devuelve `LocalState\logs\<juego>`.
+- Escrituras en `game/`: `renpy/loader.py:48-63` (`get_path`) y el guardado de `.rpyc` (`renpy/script.py:902-917`) van dentro
+  de `try`. Si el USB no es escribible, Ren'Py compila los `.rpy` en memoria en cada arranque y sigue. Precompilar
+  `renpy/common` en CI se deja como posible mejora del tiempo de arranque (Hito 5).
+
+### 31.4 Sandbox: `ctypes` y otros (nuestro CPython no tiene `ctypes`, §24)
+| Sitio | ¿Protegido? | Acción |
+|---|---|---|
+| `error.py:403` (colores de consola) | no | `NO_COLOR=1` lo evita (`error.py:389`) |
+| `display/core.py:246` (modo seguro con Shift) | `try` | nada |
+| `display/core.py:799` (nvdrs, NVIDIA) | `try` (`core.py:790`) | nada |
+| `display/core.py:827` (DPI) | `try` | además `RENPY_HIGHDPI=1` lo evita (`core.py:820`) |
+| `display/presplash.py:101` | **no** | parche: `ImportError` → seguir sin `SetProcessDPIAware`. The Question no tiene presplash; KS:RE probablemente sí |
+| `translation/__init__.py:1264` (`detect_user_locale`) | no | solo con autodetección de idioma (desactivada por defecto); se protege en el mismo parche |
+| `exports/platformexports.py:204` (`get_sdl_dll`) | bajo demanda | nada en el Hito 4 |
+- `bootstrap.py:24` importa `subprocess`. Funciona con los stubs de `_winapi` del Hito 2, que dan `OSError(ENOSYS)` solo
+  al ejecutar. `pypresence` y Discord no están en Ren'Py: son de KS:RE y van al Hito 5.
+
+### 31.5 Juego de prueba «The Question»
+- Está en el repo de Ren'Py, en el tag (`the_question/game`, 11 MB: `.rpy`, JPG, PNG, `illurock.opus`, sin presplash). No
+  se commitea (regla 1). El usuario lo copia al USB en `E:\renpy\games\the_question\game\`. Sin `.rpyc`: Ren'Py lo compila
+  en la Xbox.
+- Mando: Ren'Py usa `renpy.pygame.controller` (SDL GameController). En WinRT, SDL 2.0.20 lo implementa con
+  Windows.Gaming.Input, ya probado en el Hito 1.
+
+### 31.6 Plan de implementación
+1. `renpy/uwp`: los 62 módulos menos `tfd`. Ampliar `0001-msvc-compat.diff` (alloca) y añadir `0002-uwp-sandbox.diff`
+   (presplash y locale). Enlazar `freetypehb`, `harfbuzz`, `fribidi`, assimp y ANGLE (import libs).
+2. `deps/assimp`: receta y caché propias.
+3. Paquete: `libEGL.dll` y `libGLESv2.dll` de ANGLE, `renpy-base/renpy/common/`, `renpy_uwp_main.py`.
+4. Host: tras el smoke test, ejecutar el lanzador con el primer juego encontrado en `<unidad>:\renpy\games\*\game\` (o el
+   indicado en `LocalState\renpy-uwp.ini`). Partidas y logs en LocalState. Al salir de Ren'Py se cierra la app.
