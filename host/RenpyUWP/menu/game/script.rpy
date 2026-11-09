@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-init -10 python:
+init -30 python:
     import os
     import sys
     import renpy_uwp_main as _host
@@ -38,8 +38,8 @@ init -10 python:
 
     def _root_label(root):
         if root.endswith(":\\"):
-            return "Unidad " + root[:2]
-        return "Juegos copiados a la consola (LocalState)"
+            return T("drive") + root[:2]
+        return T("localstate")
 
     def _last_game():
         b = _host.read_ini().get("last_game")
@@ -72,6 +72,8 @@ label hub:
         call guide
     elif _return == "about":
         call screen about
+    elif _return == "lang":
+        $ isro_toggle_language()
     elif _return == "quit":
         $ _quit()
     jump hub
