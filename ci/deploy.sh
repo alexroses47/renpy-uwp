@@ -66,6 +66,7 @@ for d in "${deps[@]}"; do dp_info "Dependency: $(basename "$d")"; done
 
 # --- 2. Device Portal pins ---------------------------------------------------
 dp_load_pins
+dp_refresh_cert_pin
 
 # --- 3. openappx -------------------------------------------------------------
 openappx_bin=""
@@ -132,8 +133,8 @@ if [[ $start -eq 1 ]]; then
     for attempt in 1 2 3 4 5; do
         sleep 5
         dp_info "Launching $APP_ID (attempt $attempt)"
-        if [[ -n "$openappx_bin" ]]; then
-            oa --start "$pfn" --app-id "$APP_ID" && launched=1
+        if [[ -n "$openappx_bin" ]] && oa --start "$pfn" --app-id "$APP_ID"; then
+            launched=1
         else
             dp_rest_start "$pfn" "$APP_ID" && launched=1
         fi

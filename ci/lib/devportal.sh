@@ -63,6 +63,25 @@ dp_load_pins() {
     dp_info "Saved in $DP_CONFIG_DIR (delete those files if the console certificate changes)"
 }
 
+# The console re-issues its self-signed certificate (same key pair) from time to time. openappx pins the
+# certificate hash, curl the public key: when the key still matches the pin, refresh the certificate pin;
+# when the key changed, refuse (that is a different device or a real certificate change).
+dp_refresh_cert_pin() {
+    local hp pem key cert cert_file="$DP_CONFIG_DIR/xbox-dp.cert-sha256"
+    hp="$(dp_hostport)"
+    pem="$(openssl s_client -connect "$hp" </dev/null 2>/dev/null | openssl x509 2>/dev/null)" || return 0
+    [[ -n "$pem" ]] || return 0
+    key="$(openssl x509 -pubkey -noout <<<"$pem" | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64)"
+    cert="$(openssl x509 -outform DER <<<"$pem" | sha256sum | cut -d' ' -f1)"
+    [[ "$cert" == "$DP_CERT_PIN" ]] && return 0
+    [[ "$key" == "$DP_PUBKEY_PIN" ]] ||
+        dp_die "Device Portal public key changed (pinned $DP_PUBKEY_PIN, now $key); delete $DP_CONFIG_DIR/xbox-dp.* to re-pin if expected"
+    dp_info "Console re-issued its certificate with the same key; updating the certificate pin"
+    openssl x509 -noout -subject -startdate -enddate <<<"$pem" >&2
+    DP_CERT_PIN="$cert"
+    [[ -n "${XBOX_DP_CERT_PIN:-}" ]] || printf '%s\n' "$cert" >"$cert_file"
+}
+
 # curl wrapper: pinned public key, credentials via a config on stdin (not visible in ps).
 dp_curl() {
     local s="${XBOX_DP_USER}:${XBOX_DP_PASS}"

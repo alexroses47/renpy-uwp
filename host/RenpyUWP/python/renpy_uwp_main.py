@@ -104,6 +104,11 @@ def run(localstate, install):
     os.environ["RENPY_HIGHDPI"] = "1"  # skips the ctypes DPI query (display/core.py setup_dpi_scaling)
     os.environ["NO_COLOR"] = "1"       # skips the ctypes console-colour probe (error.py)
 
+    # Pure-Python packages Ren'Py ships with its Python (ecdsa, rsa, six, requests...).
+    site_zip = os.path.join(install, "python", "site-packages.zip")
+    if site_zip not in sys.path:
+        sys.path.append(site_zip)
+
     # Ren'Py's own launcher module: bootstrap() calls renpy.__main__.path_to_gamedir & co.
     spec = importlib.util.spec_from_file_location("renpy_launcher_main", os.path.join(renpy_base, "renpy.py"))
     launcher = importlib.util.module_from_spec(spec)

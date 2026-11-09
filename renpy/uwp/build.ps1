@@ -76,6 +76,11 @@ Invoke-Checked 'vc_version' { & $py -I (Join-Path $here 'write_vc_version.py') $
 Invoke-Checked 'renpy.zip' {
     & $py -I (Join-Path $here '..\..\python\cpython-uwp\make_stdlib_zip.py') $src (Join-Path $Prefix 'renpy.zip') --only renpy | Out-Host
 }
+# Pure-Python packages that Ren'Py ships next to the stdlib (ecdsa, rsa, six, requests...).
+Invoke-Checked 'site-packages.zip' {
+    & $py -I (Join-Path $here 'make_site_zip.py') (Join-Path $Prefix 'site-packages.zip') (Join-Path $Prefix 'licenses') | Out-Host
+}
+
 # renpy-base: the directory Ren'Py treats as renpy_base. It holds renpy.py (whose path_to_* functions
 # the UWP launcher reuses) and renpy/common/ as a real folder (renpy.py path_to_common requires
 # isdir; .rpy, fonts and images loaded by the script loader). The .py code stays in renpy.zip.

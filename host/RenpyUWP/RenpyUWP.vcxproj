@@ -168,6 +168,9 @@
     <None Include="python\renpy.zip">
       <DeploymentContent>true</DeploymentContent>
     </None>
+    <None Include="python\site-packages.zip">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
     <None Include="python\test\test.png">
       <DeploymentContent>true</DeploymentContent>
     </None>

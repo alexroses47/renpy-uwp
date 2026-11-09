@@ -198,6 +198,7 @@ jobs:
           New-Item -ItemType Directory -Force host/RenpyUWP/python | Out-Null
           Copy-Item out/deps/cpython/python312.zip host/RenpyUWP/python/python312.zip
           Copy-Item out/deps/renpy/renpy.zip host/RenpyUWP/python/renpy.zip
+          Copy-Item out/deps/renpy/site-packages.zip host/RenpyUWP/python/site-packages.zip
           New-Item -ItemType Directory -Force host/RenpyUWP/python/test | Out-Null
           Copy-Item out/testmedia/* host/RenpyUWP/python/test/
           Get-ChildItem out/deps/media/lib -Filter *.lib | Select-Object Name, Length | Format-Table -AutoSize | Out-String
@@ -314,7 +315,7 @@ jobs:
           Copy-Item out/deps/angle/licenses/* dist/licenses/
           $listing = & tar -tf $env:PKG_PATH
           if (-not ($listing -contains 'SDL2.dll')) { throw "SDL2.dll is not at the package root:`n$($listing -join "`n")" }
-          foreach ($f in @('libEGL.dll', 'libGLESv2.dll', 'python/renpy_uwp_main.py', 'renpy-base/renpy.py', 'renpy-base/renpy/common/00start.rpy', 'python/python312.zip', 'python/smoke.py', 'python/media_test.py', 'python/renpy.zip', 'python/test/test.png', 'python/test/test.ogg', 'python/test/test-vp9.mkv', 'python/test/test-vp9-10bit.mkv')) {
+          foreach ($f in @('libEGL.dll', 'libGLESv2.dll', 'python/renpy_uwp_main.py', 'python/site-packages.zip', 'renpy-base/renpy.py', 'renpy-base/renpy/common/00start.rpy', 'python/python312.zip', 'python/smoke.py', 'python/media_test.py', 'python/renpy.zip', 'python/test/test.png', 'python/test/test.ogg', 'python/test/test-vp9.mkv', 'python/test/test-vp9-10bit.mkv')) {
             if (-not ($listing -contains $f)) { throw "$f is not in the package:`n$($listing -join "`n")" }
           }
           $vclibs = Get-ChildItem -Recurse out/AppPackages -Filter 'Microsoft.VCLibs.x64.*.appx' |
