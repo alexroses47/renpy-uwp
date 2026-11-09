@@ -10,8 +10,9 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 # Our own files that use game-like extensions: app tiles, the IsroTaxo menu (a tiny Ren'Py game written
-# for this project) and the project logo (the author's artwork).
-allow_re='^(host/RenpyUWP/Assets/[A-Za-z0-9_.-]+\.png|host/RenpyUWP/menu/game/[a-z_]+\.rpy|host/RenpyUWP/menu/game/images/(logo|flower)\.png|host/branding/isrotaxo-logo\.png)$'
+# for this project), the project logo (the author's artwork) and README screenshots (our menu; Ren'Py's
+# MIT-licensed sample game The Question).
+allow_re='^(host/RenpyUWP/Assets/[A-Za-z0-9_.-]+\.png|host/RenpyUWP/menu/game/[a-z_]+\.rpy|host/RenpyUWP/menu/game/images/(logo|flower)\.png|host/branding/isrotaxo-logo\.png|docs/screenshots/(menu\.png|xbox-[a-z-]+\.jpg))$'
 block_re='\.(rpa|rpi|rpy|rpyc|rpym|rpymc|rpyb|rpu|png|jpe?g|webp|avif|gif|bmp|tga|dds|ogg|opus|oga|mp3|wav|flac|m4a|webm|mkv|ogv|mp4|m4v|avi|mpe?g|ttf|otf|ttc|woff2?|moc3|zip|7z|rar|pfx|p12|key|pem)$'
 
 bad=$(git ls-files | grep -Ei "$block_re" | grep -Ev "$allow_re" || true)

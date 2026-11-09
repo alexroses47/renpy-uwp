@@ -16,6 +16,19 @@ Primer juego probado de principio a fin: *Katawa Shoujo: Re-Engineered*.
 > **Estado: experimental.** Funciona con los juegos probados, pero puede tener fallos con otros. Este
 > repositorio **no incluye ni acepta juegos**: cada persona pone los suyos.
 
+## Capturas
+
+| Menú de IsroTaxo | Con la guía de Xbox abierta |
+|---|---|
+| ![Menú de IsroTaxo](docs/screenshots/menu.png) | ![Menú de IsroTaxo y guía de Xbox en la TV](docs/screenshots/xbox-menu-guide.jpg) |
+
+| *The Question* en la Xbox | Con la guía de Xbox abierta |
+|---|---|
+| ![The Question en IsroTaxo](docs/screenshots/xbox-the-question.jpg) | ![The Question con la guía de Xbox](docs/screenshots/xbox-the-question-guide.jpg) |
+
+Fotos de una Xbox Series S en Dev Mode conectada a la TV. *The Question* es el juego de ejemplo del SDK de Ren'Py;
+su arte se distribuye bajo la misma licencia MIT que Ren'Py (copyright de sus autores; ver la licencia de Ren'Py).
+
 ## Qué necesitas
 
 - Una **Xbox Series X|S en modo desarrollador** (Dev Mode), con acceso al Device Portal desde tu PC.
@@ -116,7 +129,13 @@ El certificado de firma se prepara una vez (`docs/SIGNING.md`).
 ## Licencias
 
 El código original de IsroTaxo (host, menú, lanzador, scripts y recetas) está bajo la
-**Mozilla Public License 2.0** ([`LICENSE`](LICENSE)). El logo de IsroTaxo es obra del autor del proyecto.
+**Mozilla Public License 2.0** ([`LICENSE`](LICENSE)). La MPL obliga a conservar la licencia y los avisos de
+copyright en cualquier redistribución o fork, y a publicar el código de los archivos modificados.
+
+El **nombre y el logo de IsroTaxo** no forman parte de la licencia del código (la MPL-2.0 no concede derechos de
+marca, §2.3). El logo es obra del autor del proyecto, con todos los derechos reservados. Si haces un fork, usa un
+nombre y un logo propios, y te agradeceremos que indiques que está **basado en IsroTaxo** con un enlace a este
+repositorio.
 
 Los componentes de terceros conservan sus licencias, y también nuestros parches a sus archivos: Ren'Py (MIT),
 CPython (PSF), SDL2, SDL2_image y zlib (zlib), libpng, libjpeg-turbo, libwebp, FreeType, HarfBuzz, assimp y

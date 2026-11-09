@@ -82,6 +82,10 @@ errors.txt
 !host/RenpyUWP/menu/game/images/flower.png
 !host/branding/
 !host/branding/isrotaxo-logo.png
+# Allow-list: README screenshots (our menu and Ren'Py's MIT sample game The Question)
+!docs/screenshots/
+!docs/screenshots/menu.png
+!docs/screenshots/xbox-*.jpg
 
 # =====================================================================
 # Secrets / signing material
