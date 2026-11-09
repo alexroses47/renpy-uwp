@@ -30,7 +30,7 @@ concurrency:
 jobs:
   build:
     runs-on: windows-2022
-    timeout-minutes: 60
+    timeout-minutes: 150
     env:
       CONFIGURATION: ${{ inputs.configuration || 'Release' }}
       SDK_VERSION: 10.0.22621.0
@@ -99,11 +99,39 @@ jobs:
         shell: pwsh
         run: ./deps/media/build.ps1 -Prefix "$env:GITHUB_WORKSPACE/out/deps/media" -ZlibPrefix "$env:GITHUB_WORKSPACE/out/deps/cpython" -SdlPrefix "$env:GITHUB_WORKSPACE/out/deps/sdl2"
 
+      - name: Restore Ren'Py static modules from cache
+        id: cache-renpy
+        uses: actions/cache@v4
+        with:
+          path: out/deps/renpy
+          key: renpy-uwp-x64-${{ hashFiles('renpy/VERSION', 'renpy/uwp/**', 'python/cpython-uwp/**', 'deps/media/**', 'deps/sdl2/*.ps1') }}-py${{ steps.hostpy.outputs.python-version }}
+
+      - name: Build Ren'Py static modules (Cython 3.2.4) and renpy.zip
+        if: steps.cache-renpy.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./renpy/uwp/build.ps1 -Prefix "$env:GITHUB_WORKSPACE/out/deps/renpy" -HostPython "${{ steps.hostpy.outputs.python-path }}" -PythonPrefix "$env:GITHUB_WORKSPACE/out/deps/cpython" -SdlPrefix "$env:GITHUB_WORKSPACE/out/deps/sdl2" -MediaPrefix "$env:GITHUB_WORKSPACE/out/deps/media"
+
+      - name: Restore test media from cache
+        id: cache-testmedia
+        uses: actions/cache@v4
+        with:
+          path: out/testmedia
+          key: testmedia-${{ hashFiles('ci/make-test-media.ps1') }}
+
+      - name: Generate synthetic test media (PNG, OGG, VP9 8/10-bit MKV)
+        if: steps.cache-testmedia.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: ./ci/make-test-media.ps1 -OutDir "$env:GITHUB_WORKSPACE/out/testmedia"
+
       - name: Stage Python stdlib zip next to the host project
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force host/RenpyUWP/python | Out-Null
           Copy-Item out/deps/cpython/python312.zip host/RenpyUWP/python/python312.zip
+          Copy-Item out/deps/renpy/renpy.zip host/RenpyUWP/python/renpy.zip
+          New-Item -ItemType Directory -Force host/RenpyUWP/python/test | Out-Null
+          Copy-Item out/testmedia/* host/RenpyUWP/python/test/
+          Get-ChildItem out/deps/media/lib -Filter *.lib | Select-Object Name, Length | Format-Table -AutoSize | Out-String
           Get-Content out/deps/cpython/cpython-uwp-build.json
 
       - name: Stage SDL2 runtime next to the host project
@@ -155,6 +183,8 @@ jobs:
             /p:AppxPackageDir=$pkgDir `
             /p:SdlDir="$env:GITHUB_WORKSPACE/out/deps/sdl2" `
             /p:PythonDir="$env:GITHUB_WORKSPACE/out/deps/cpython" `
+            /p:MediaDir="$env:GITHUB_WORKSPACE/out/deps/media" `
+            /p:RenpyDir="$env:GITHUB_WORKSPACE/out/deps/renpy" `
             /p:AppxPackageSigningEnabled=false
           if ($LASTEXITCODE -ne 0) { throw "msbuild failed with exit code $LASTEXITCODE" }
           Get-ChildItem -Recurse out/AppPackages | Select-Object FullName, Length | Format-Table -AutoSize | Out-String -Width 300
@@ -166,6 +196,10 @@ jobs:
           $dumpbin = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC" -Recurse -Filter dumpbin.exe | Where-Object { $_.FullName -match 'Hostx64\\x64' } | Select-Object -First 1
           New-Item -ItemType Directory -Force dist | Out-Null
           & $dumpbin.FullName /nologo /imports $exe.FullName | Set-Content -Encoding utf8 dist/imports-RenpyUWP.txt
+          # Python runs on the main thread: the linker /STACK reserve must be 8 MB (0x800000).
+          $stack = & $dumpbin.FullName /nologo /headers $exe.FullName | Select-String 'size of stack reserve'
+          Write-Host "PE header: $stack"
+          if ("$stack" -notmatch '^\s*800000 size of stack reserve') { throw "stack reserve is not 8 MB: $stack" }
           $dlls = Select-String -Path dist/imports-RenpyUWP.txt -Pattern '^\s{4}(\S+\.dll)$' | ForEach-Object { $_.Matches[0].Groups[1].Value } | Sort-Object -Unique
           Write-Host "Imported DLLs:"; $dlls | ForEach-Object { Write-Host "  $_" }
           $odd = $dlls | Where-Object { $_ -notmatch '^(api-ms-win-|ext-ms-win-|vcruntime140_app|msvcp140_app|vccorlib140_app|SDL2\.dll)' }
@@ -199,9 +233,11 @@ jobs:
           New-Item -ItemType Directory -Force dist/licenses | Out-Null
           Copy-Item out/deps/sdl2/licenses/* dist/licenses/
           Copy-Item out/deps/cpython/licenses/* dist/licenses/
+          Copy-Item out/deps/media/licenses/* dist/licenses/
+          Copy-Item out/deps/renpy/licenses/* dist/licenses/
           $listing = & tar -tf $env:PKG_PATH
           if (-not ($listing -contains 'SDL2.dll')) { throw "SDL2.dll is not at the package root:`n$($listing -join "`n")" }
-          foreach ($f in @('python/python312.zip', 'python/smoke.py')) {
+          foreach ($f in @('python/python312.zip', 'python/smoke.py', 'python/media_test.py', 'python/renpy.zip', 'python/test/test.png', 'python/test/test.ogg', 'python/test/test-vp9.mkv', 'python/test/test-vp9-10bit.mkv')) {
             if (-not ($listing -contains $f)) { throw "$f is not in the package:`n$($listing -join "`n")" }
           }
           $vclibs = Get-ChildItem -Recurse out/AppPackages -Filter 'Microsoft.VCLibs.x64.*.appx' |
