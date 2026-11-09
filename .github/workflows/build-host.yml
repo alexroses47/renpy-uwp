@@ -209,8 +209,13 @@ jobs:
         run: |
           Copy-Item out/deps/sdl2/bin/SDL2.dll host/RenpyUWP/SDL2.dll
           Copy-Item out/deps/angle/bin/libEGL.dll, out/deps/angle/bin/libGLESv2.dll host/RenpyUWP/
+          # ANGLE's D3D11 backend compiles HLSL at run time with d3dcompiler_47.dll (fork doc/DevSetup.md):
+          # ship the Windows SDK redistributable copy instead of relying on the console's system copy.
+          $d3dc = "${env:ProgramFiles(x86)}\Windows Kits\10\Redist\D3D\x64\d3dcompiler_47.dll"
+          if (-not (Test-Path $d3dc)) { throw "d3dcompiler_47.dll not found at $d3dc" }
+          Copy-Item $d3dc host/RenpyUWP/
           Get-Content out/deps/angle/angle-build.json
-          Get-FileHash -Algorithm SHA256 host/RenpyUWP/libEGL.dll, host/RenpyUWP/libGLESv2.dll | Format-Table -AutoSize | Out-String -Width 200
+          Get-FileHash -Algorithm SHA256 host/RenpyUWP/libEGL.dll, host/RenpyUWP/libGLESv2.dll, host/RenpyUWP/d3dcompiler_47.dll | Format-Table -AutoSize | Out-String -Width 200
           if (Test-Path host/RenpyUWP/renpy-base) { Remove-Item -Recurse -Force host/RenpyUWP/renpy-base }
           Copy-Item -Recurse out/deps/renpy/renpy-base host/RenpyUWP/renpy-base
           Get-Content out/deps/sdl2/sdl2-build.json
@@ -315,7 +320,7 @@ jobs:
           Copy-Item out/deps/angle/licenses/* dist/licenses/
           $listing = & tar -tf $env:PKG_PATH
           if (-not ($listing -contains 'SDL2.dll')) { throw "SDL2.dll is not at the package root:`n$($listing -join "`n")" }
-          foreach ($f in @('libEGL.dll', 'libGLESv2.dll', 'python/renpy_uwp_main.py', 'python/site-packages.zip', 'renpy-base/renpy.py', 'renpy-base/renpy/common/00start.rpy', 'python/python312.zip', 'python/smoke.py', 'python/media_test.py', 'python/renpy.zip', 'python/test/test.png', 'python/test/test.ogg', 'python/test/test-vp9.mkv', 'python/test/test-vp9-10bit.mkv')) {
+          foreach ($f in @('libEGL.dll', 'libGLESv2.dll', 'd3dcompiler_47.dll', 'python/renpy_uwp_main.py', 'python/site-packages.zip', 'renpy-base/renpy.py', 'renpy-base/renpy/common/00start.rpy', 'python/python312.zip', 'python/smoke.py', 'python/media_test.py', 'python/renpy.zip', 'python/test/test.png', 'python/test/test.ogg', 'python/test/test-vp9.mkv', 'python/test/test-vp9-10bit.mkv')) {
             if (-not ($listing -contains $f)) { throw "$f is not in the package:`n$($listing -join "`n")" }
           }
           $vclibs = Get-ChildItem -Recurse out/AppPackages -Filter 'Microsoft.VCLibs.x64.*.appx' |

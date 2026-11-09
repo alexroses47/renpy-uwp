@@ -146,6 +146,10 @@
     <None Include="libGLESv2.dll">
       <DeploymentContent>true</DeploymentContent>
     </None>
+    <!-- HLSL compiler used by ANGLE's D3D11 backend (Windows SDK Redist\D3D). -->
+    <None Include="d3dcompiler_47.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
     <!-- renpy_base (renpy.py + renpy\common\), staged by CI from out/deps/renpy/renpy-base (git-ignored). -->
     <None Include="renpy-base\**\*">
       <DeploymentContent>true</DeploymentContent>
