@@ -1,0 +1,20 @@
+--- a/src/video/winrt/SDL_winrtvideo.cpp	2026-11-09 11:09:05.086706810 -0500
++++ b/src/video/winrt/SDL_winrtvideo.cpp	2026-11-09 11:09:05.101085433 -0500
+@@ -323,7 +323,7 @@
+         display.name = "Windows Simulator / Terminal Services Display";
+         mode.w = (dxgiOutputDesc.DesktopCoordinates.right - dxgiOutputDesc.DesktopCoordinates.left);
+         mode.h = (dxgiOutputDesc.DesktopCoordinates.bottom - dxgiOutputDesc.DesktopCoordinates.top);
+-        mode.format = DXGI_FORMAT_B8G8R8A8_UNORM;
++        mode.format = SDL_PIXELFORMAT_ARGB8888; /* renpy-uwp: was the DXGI enum (DXGI_FORMAT_B8G8R8A8_UNORM), not an SDL pixel format */
+         mode.refresh_rate = 0;  /* Display mode is unknown, so just fill in zero, as specified by SDL's header files */
+         display.desktop_mode = mode;
+         display.current_mode = mode;
+@@ -445,7 +445,7 @@
+                 mode.h = WINRT_DIPS_TO_PHYSICAL_PIXELS(coreWin->Bounds.Height);
+ #endif
+ 
+-                mode.format = DXGI_FORMAT_B8G8R8A8_UNORM;
++                mode.format = SDL_PIXELFORMAT_ARGB8888; /* renpy-uwp: was the DXGI enum (DXGI_FORMAT_B8G8R8A8_UNORM), not an SDL pixel format */
+                 mode.refresh_rate = 0;  /* Display mode is unknown, so just fill in zero, as specified by SDL's header files */
+                 display.desktop_mode = mode;
+                 display.current_mode = mode;

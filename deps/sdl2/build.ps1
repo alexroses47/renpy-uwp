@@ -29,6 +29,16 @@ if (Test-Path $src) { Remove-Item -Recurse -Force $src }
 tar -xzf $tarball -C $WorkDir
 if ($LASTEXITCODE -ne 0) { throw "tar failed" }
 
+# Fixes for SDL 2.0.20 on WinRT/Xbox (see each patch header and docs/RESEARCH.md).
+Push-Location $src
+try {
+    foreach ($p in Get-ChildItem (Join-Path $PSScriptRoot 'patches') -Filter *.diff | Sort-Object Name) {
+        Write-Host "Applying $($p.Name)"
+        git apply --verbose $p.FullName
+        if ($LASTEXITCODE -ne 0) { throw "git apply $($p.Name) failed" }
+    }
+} finally { Pop-Location }
+
 $proj = Join-Path $src 'VisualC-WinRT\SDL-UWP.vcxproj'
 $out = (Join-Path $WorkDir "out\$Configuration").Replace('\', '/') + '/'
 $int = (Join-Path $WorkDir "obj\$Configuration").Replace('\', '/') + '/'

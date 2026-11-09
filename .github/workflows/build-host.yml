@@ -48,7 +48,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: out/deps/sdl2
-          key: sdl2-uwp-x64-${{ env.CONFIGURATION }}-${{ hashFiles('deps/sdl2/*.ps1') }}
+          key: sdl2-uwp-x64-${{ env.CONFIGURATION }}-${{ hashFiles('deps/sdl2/**') }}
 
       - name: Build SDL2 (WinRT)
         if: steps.cache-sdl2.outputs.cache-hit != 'true'
@@ -157,7 +157,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: out/deps/renpy
-          key: renpy-uwp-x64-${{ hashFiles('renpy/VERSION', 'renpy/uwp/**', 'python/cpython-uwp/**', 'deps/media/**', 'deps/assimp/**', 'deps/sdl2/*.ps1') }}-py${{ steps.hostpy.outputs.python-version }}
+          key: renpy-uwp-x64-${{ hashFiles('renpy/VERSION', 'renpy/uwp/**', 'python/cpython-uwp/**', 'deps/media/**', 'deps/assimp/**', 'deps/sdl2/**') }}-py${{ steps.hostpy.outputs.python-version }}
 
       - name: Build Ren'Py static modules (Cython 3.2.4) and renpy.zip
         if: steps.cache-renpy.outputs.cache-hit != 'true'

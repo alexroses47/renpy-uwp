@@ -763,3 +763,16 @@ Ningún códec externo (libvpx/libopus/libvorbis no hacen falta: FFmpeg trae dec
 3. Paquete: `libEGL.dll` y `libGLESv2.dll` de ANGLE, `renpy-base/renpy/common/`, `renpy_uwp_main.py`.
 4. Host: tras el smoke test, ejecutar el lanzador con el primer juego encontrado en `<unidad>:\renpy\games\*\game\` (o el
    indicado en `LocalState\renpy-uwp.ini`). Partidas y logs en LocalState. Al salir de Ren'Py se cierra la app.
+
+### 31.7 Hallazgos al probar en la Xbox (Hito 4)
+- **Bug de SDL 2.0.20 en WinRT:** en la Xbox no hay salidas DXGI y SDL usa su «DXGI Display-detection workaround»
+  (`src/video/winrt/SDL_winrtvideo.cpp:448`; también la ruta del simulador, `:326`). Ahí asigna a `mode.format` el enum
+  **DXGI** `DXGI_FORMAT_B8G8R8A8_UNORM` (87) en lugar de un formato SDL. `pygame.display.Info()` (`display.pyx:612`)
+  llama a `SDL_AllocFormat(dm.format)` y falla con «Parameter 'format' is invalid», y Ren'Py no llega a crear la ventana
+  GL. Parche `deps/sdl2/patches/0001-winrt-display-mode-format.diff`: `SDL_PIXELFORMAT_ARGB8888`, la misma equivalencia
+  que `D3D11_DXGIFormatToSDLPixelFormat` (`SDL_render_d3d11.c:204`). El fallo sigue en la rama SDL2 actual.
+- Ren'Py copia con pickle los globales de todo módulo cuyo nombre empieza por `renpy` (`renpy/__init__.py:309`). Por eso
+  el `renpy.py` del lanzador se carga como `uwp_renpy_launcher`.
+- `renpy/savetoken.py` importa `ecdsa` al arrancar: se empaqueta `site-packages.zip` con los paquetes puros de renpy-build.
+- Al no poder escribir `.rpyc` en `renpy-base` (paquete de solo lectura), Ren'Py registra `PermissionError` y compila
+  `renpy/common` en memoria en cada arranque (tolerado, `script.py:902-917`). Precompilarlo queda como mejora.
