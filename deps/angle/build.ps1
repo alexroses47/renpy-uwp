@@ -29,11 +29,14 @@ if (-not (Test-Path $depot)) {
 }
 $env:PATH = "$depot;$env:PATH"
 $env:DEPOT_TOOLS_WIN_TOOLCHAIN = '0'
-$env:DEPOT_TOOLS_UPDATE = '0'
 $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
 $env:vs2022_install = $vs
 Write-Host "Visual Studio: $vs"
+# First run bootstraps depot_tools (its own Python 3 via CIPD, python3_bin_reldir.txt); only then
+# freeze it so later steps do not self-update.
+Invoke-Checked 'depot_tools bootstrap' { cmd /c "update_depot_tools.bat" }
 Invoke-Checked 'gclient bootstrap' { cmd /c "gclient --version" }
+$env:DEPOT_TOOLS_UPDATE = '0'
 
 # ANGLE at the pinned fork commit.
 if (-not (Test-Path (Join-Path $src '.git'))) {

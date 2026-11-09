@@ -40,7 +40,7 @@ function Get-Source([string]$key) {
     if ($h -ne $d.sha) { throw "SHA-256 mismatch for $($d.file): $h" }
     $dir = Join-Path $srcRoot ($d.file -replace '\.tar\.(gz|xz|bz2)$', '')
     if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
-    Invoke-Checked "extract $($d.file)" { tar -xf $tar -C $srcRoot }
+    Invoke-Checked "extract $($d.file)" { tar -xf $tar -C $srcRoot | Out-Host }
     return $dir
 }
 
@@ -66,12 +66,13 @@ function Build-CMake([string]$name, [string]$src, [string[]]$extra, [string]$tar
     $b = Join-Path $buildRoot $name
     if (Test-Path $b) { Remove-Item -Recurse -Force $b }
     Write-Host "=== $name"
-    Invoke-Checked "$name configure" { cmake -S $src -B $b @common @extra }
+    # Tool output goes to the host: only the build directory is returned.
+    Invoke-Checked "$name configure" { cmake -S $src -B $b @common @extra | Out-Host }
     if ($target) {
-        Invoke-Checked "$name build" { cmake --build $b --config Release --parallel --target $target -- /nologo /v:minimal }
+        Invoke-Checked "$name build" { cmake --build $b --config Release --parallel --target $target -- /nologo /v:minimal | Out-Host }
     } else {
-        Invoke-Checked "$name build" { cmake --build $b --config Release --parallel -- /nologo /v:minimal }
-        Invoke-Checked "$name install" { cmake --install $b --config Release }
+        Invoke-Checked "$name build" { cmake --build $b --config Release --parallel -- /nologo /v:minimal | Out-Host }
+        Invoke-Checked "$name install" { cmake --install $b --config Release | Out-Host }
     }
     return $b
 }
