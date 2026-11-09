@@ -25,3 +25,6 @@ define config.window = "hide"
 # The B button / Escape open no game menu; each screen handles "game_menu" as "back".
 define _game_menu_screen = None
 define config.quit_action = Function(renpy.quit, save=False)
+
+# A menu has no Steam integration (avoids "Failed to initialize steam" in its log).
+define config.enable_steam = False

@@ -132,3 +132,6 @@ venv/
 
 # Ren'Py base (renpy.py + renpy/common) staged by CI next to the host project
 host/RenpyUWP/renpy-base/
+
+# Local console captures (review before publishing; see ci/screenshot.sh)
+/screenshots/

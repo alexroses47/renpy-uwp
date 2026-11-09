@@ -243,10 +243,11 @@ jobs:
           "PFX_PATH=$pfx" >> $env:GITHUB_ENV
           "CER_PATH=$cer" >> $env:GITHUB_ENV
 
-      - name: Set package version (0.0.<run_number>.0)
+      - name: Set package version (0.1.<run_number>.0)
         shell: pwsh
         run: |
-          $version = "0.0.$($env:GITHUB_RUN_NUMBER).0"
+          # 0.1.x = IsroTaxo releases (the menu); higher than every 0.0.x dev build, so updates install in place.
+          $version = "0.1.$($env:GITHUB_RUN_NUMBER).0"
           $path = (Resolve-Path host/RenpyUWP/Package.appxmanifest).Path
           [xml]$m = Get-Content $path
           $m.Package.Identity.Version = $version
