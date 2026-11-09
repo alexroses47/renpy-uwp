@@ -588,3 +588,90 @@ Comparado con nuestro build UWP (built-ins de `python.log` 0.0.23 + `Lib` del fo
 proteger esas rutas en UWP o construir `_ctypes` (libffi + W^X, ver #154700/#161539 upstream).
 Paquetes no estándar que trae el juego o Ren'Py: `renpy` (223 módulos), `pygame_sdl2`/`pygame` (25+25), `store`, `ecdsa`,
 `rsa`, `six`, `pypresence` (Discord, del juego), `steamapi`/`_renpysteam`, `_renpytfd`, `jnius` (stub).
+
+---
+
+# Hito 3 — Dependencias C + pygame_sdl2 (investigación 2026-11-08)
+
+## 25. Formatos que usa KS:RE (`docs/ksre-media-inventory.json`, `tools/inventory-media.py`)
+
+Escaneo de `game/` (archivos sueltos y los 6 `.rpa` RPA-3.0, índice leído con un unpickler que rechaza clases; `ffprobe`
+8.1.3 sobre los primeros MB de cada recurso por stdin, nada extraído a disco; en el repo solo totales, sin nombres):
+- **Vídeo**: 176 × **Matroska** (`.mkv`) con **VP9** 1920×1080 a 30 fps (146 `yuv420p`, **20 `yuv420p10le`**, 10 a 29.97 fps)
+  y audio **Opus** 48 kHz (171 estéreo, 5 mono).
+- **Audio**: 111 × **Ogg Vorbis** (44.1 kHz y 22.05 kHz, estéreo/mono).
+- **Imágenes**: 1587 **PNG** (paleta 8/4 bits, RGB, RGBA, gris, gris+alfa) y 303 **JPEG**. **Ni WebP ni AVIF.**
+- Fuentes: 6 TTF + 2 OTF.
+
+## 26. Dependencias: versiones y fuentes (idénticas a renpy-build `renpy-8.5.3.26051504`)
+
+Cada tarball oficial descargado se comparó con el de `renpy-build/source/`: **10/10 idénticos (mismo SHA-256)**.
+
+| Dependencia | Versión | SHA-256 | URL oficial | Build UWP |
+|---|---|---|---|---|
+| libpng | 1.6.43 | `e804e465…4925` | download.sourceforge.net/libpng | CMake (estático) |
+| libjpeg-turbo | 1.5.3 | `b24890e2…2523` | downloads.sourceforge.net/libjpeg-turbo | CMake + NASM (SIMD) |
+| libwebp | 1.3.2 | `2a499607…09b4` | storage.googleapis.com/downloads.webmproject.org | CMake (no lo usa KS:RE; runtime genérico) |
+| freetype | 2.13.3 | `5c3a8e78…1747` | download.savannah.gnu.org | CMake (sin harfbuzz) |
+| harfbuzz | 8.0.1 | `c1ce780a…2620` | github.com/harfbuzz/harfbuzz/releases | CMake `HB_HAVE_FREETYPE=ON` |
+| fribidi | 1.0.7 | `5ab5f21e…935d` | github.com/fribidi/fribidi/releases | **CMake propio** (solo meson/autotools; tablas `.tab.i` vienen pregeneradas) |
+| SDL2_image | 2.6.2 | `48355fb4…4777` | github.com/libsdl-org/SDL_image/releases | **CMake propio** (`IMG*.c` con `LOAD_PNG/JPG/WEBP`; su CMake exige `SDL2Config` y el nuestro de SDL2 es vcxproj) |
+| FFmpeg | 4.3.1 | `45035f15…3772` | ffmpeg.org/releases | `configure --toolchain=msvc` en MSYS2 (preinstalado en el runner), LGPL |
+| bzip2 | 1.0.8 | `ab5a0317…2269` | sourceware.org/pub/bzip2 | fuentes en el CMake de CPython (`_bz2`) |
+| xz | 5.4.2 | `87947679…9d05` | github.com/tukaani-project/xz/releases | CMake (`liblzma` estático) para `_lzma` (5.4.2 es anterior a la puerta trasera de 5.6.0/5.6.1) |
+
+zlib 1.3.1 ya se compila en `python/cpython-uwp` (`zlibstatic.lib`) y se reutiliza.
+Parches de renpy-build que aplican: `ffmpeg-4.3.1-ff_seek_frame_binary.diff` (variables sin inicializar, de upstream
+ab792634) y `ffmpeg-4.3.1-sse.diff` (yuv2rgb SSSE3 con búferes sin alinear, upstream ba3e771a). Son parches a FFmpeg → LGPL.
+Los parches de SDL2/otros de renpy-build no afectan a UWP (ver §11).
+
+### FFmpeg (LGPL, mínimo para KS:RE)
+Base: las opciones de renpy-build (`--disable-everything`, `--enable-w32threads`, `--disable-d3d11va --disable-dxva2`,
+sin `--enable-gpl`/`--enable-nonfree`), reducidas al inventario:
+`--enable-demuxer=matroska,ogg --enable-decoder=vp9,opus,vorbis --enable-parser=vp9,opus,vorbis`,
+`--enable-avcodec --enable-avformat --enable-swresample --enable-swscale --enable-avutil`,
+`--enable-protocol=file`, `--disable-programs --disable-doc --disable-network --disable-avdevice --disable-avfilter`,
+`--enable-static --disable-shared`, `--toolchain=msvc --target-os=win32 --arch=x86_64`,
+`--extra-cflags="-MD -DWINAPI_FAMILY=WINAPI_FAMILY_APP -D_WIN32_WINNT=0x0A00"` (el `configure` de 4.3.1 detecta `uwp`/`winrt`
+con `WINAPI_FAMILY`, líneas 6207 y 6614), `--extra-ldflags="-APPCONTAINER WindowsApp.lib"`. NASM para los SIMD de VP9
+(sin SIMD el decodificador VP9 es varias veces más lento). VP9 10 bits lo soporta el decodificador nativo de FFmpeg.
+Ningún códec externo (libvpx/libopus/libvorbis no hacen falta: FFmpeg trae decodificadores nativos).
+
+## 27. ANGLE
+
+- `SternXD/angle`: **sin releases ni workflows**; `main` (push 2025-03-10) es un espejo de upstream (último commit upstream del
+  2025-03-06), sin parches propios visibles en las ramas públicas (`main`, `backup`, `master`…).
+- **Upstream ANGLE conserva el backend UWP**: `angle_is_winuwp` en `BUILD.gn`, `src/libANGLE/renderer/d3d/d3d11/winrt/`
+  (`CoreWindowNativeWindow`, `SwapChainPanelNativeWindow`, `InspectableNativeWindow`). Confirmado en el fork y en google/angle.
+- **Decisión**: compilar el fork en CI (workflow propio con caché): depot_tools + `gclient sync`, `gn gen` con
+  `target_os="winuwp" target_cpu="x64" is_debug=false is_component_build=false angle_enable_d3d11=true` y el resto de backends
+  apagados (`d3d9 gl vulkan null swiftshader wgpu`), `ninja libEGL libGLESv2`. Commit fijado (punta de `main` del fork).
+- Plan B si la compilación es inviable por tiempo: el fork no publica binarios, así que la única opción binaria son los
+  `libEGL.dll`/`libGLESv2.dll` x64 de RetroArch (`pkg/msvc/msvc-uwp/ANGLE/x64`, BSD-3, salidos de ese fork) **con checksum
+  registrado y solo con permiso del usuario** (no son "binarios del mismo fork").
+- SDL2 2.0.20 WinRT carga ANGLE con `LoadPackagedLibrary("libEGL.dll")` y le pasa la CoreWindow (`SDL_winrtopengles.cpp`).
+  Tamaño de la superficie 1440p (`EGLRenderSurfaceSizeProperty`): Hito 4/5.
+
+## 28. pygame_sdl2 en Ren'Py 8.5.3 y enlace estático
+
+- En 8.5.3 pygame_sdl2 es **`renpy.pygame.*`** (19 módulos Cython + `src/pygame/*.c`); Ren'Py lo expone también como
+  `pygame`/`pygame_sdl2` (`renpy/pygame/__init__.py`, `import_as_pygame`). **No hay `mixer`**: el audio y el vídeo van por
+  `renpy.audio.renpysound` (`src/renpysound_core.c`, `src/ffmedia.c` → FFmpeg + SDL audio).
+- Cython **3.2.4** (`uv.lock`; el volcado de KS:RE muestra `_cython_3_2_4`).
+- Soporte estático oficial: `RENPY_STATIC=1 python setup.py generate` genera `tmp/gen3-static/*.c` y renombra
+  `PyInit_x` → `PyInit_<paquete>_x` (`scripts/setuplib.py`); `src/Setup` lista módulo → fuentes; renpy-build genera una tabla
+  `PyImport_ExtendInittab` (`runtime/librenpy_inittab3.c`). Lo replicamos con MSVC.
+- Hito 3 compila: `_renpy`, `renpy.pygame.*`, `renpy.audio.renpysound`, `renpy.audio.filter`. El resto de `src/Setup`
+  (texto, gl2, estilos…) es del Hito 4.
+- **Arquitectura**: SDL en WinRT exige las llamadas de vídeo en el hilo de la CoreWindow → **Python pasa al hilo principal**
+  (el de `SDL_WinRTRunApp`), con el stack del ejecutable subido a 8 MB (`/STACK`). El host deja de crear su propia ventana
+  cuando ejecuta Python con pygame; antes fija el modo HDMI (sin swapchain vivo).
+- Medios de prueba: generados en CI con ffmpeg (fuente sintética `testsrc2`/`sine`): PNG, OGG Vorbis, MKV VP9 8 y 10 bits +
+  Opus. Ningún recurso del juego.
+
+## 29. Notas para el Hito 4 (pedidas por el usuario)
+
+- Proteger los usos de `ctypes` en Ren'Py en UWP: `renpy/display/core.py` (DPI y consola en Windows), `renpy/error.py`,
+  `renpy/display/presplash.py`, `renpy/exports/platformexports.py`, `renpy/common/00steam.rpy` (Steam). En UWP
+  `platform.win32_ver()` no está vacío → `renpy.windows = True` y Ren'Py entra en esas rutas.
+- Desactivar `pypresence`/Discord en Xbox (KS:RE lo trae en `game/python-packages/`).
