@@ -140,6 +140,18 @@
   RWops/ffmedia, aún sin diagnosticar.
 - La ventana GL de pygame_sdl2 necesita ANGLE empaquetado (Hito 4); el test usa `renpy.pygame_AVOID_GL`.
 
+- Usuario: vio las barras de colores (PNG) en la tele. Autoriza hasta 6 iteraciones más para `renpysound`.
+- Diagnóstico (3 iteraciones extra): captura de `av_log`/`SDL_Log` a `LocalState\ffmpeg.log`, sonda RWops y variantes
+  ruta/`open()`/`BytesIO`. Los tres fallos eran del test, no del port: `play()` tiene `end=0` por defecto (= duración 0 en
+  `ffmedia.c`; Ren'Py pasa `end=-1`); el `open()` temporal se cerraba al liberarse; faltaba `advance_time()` por frame (el reloj
+  de vídeo de `ffmedia`, que Ren'Py llama desde `display/core.py`).
+- **En la Xbox (0.0.40.0): `MEDIA TEST DONE: 0 failure(s)`.** OGG Vorbis: duración 6,0 s, la posición avanza en tiempo real
+  por las tres vías. VP9+Opus en MKV vía `renpysound`: 90 frames en 3 s (29,7 fps = tiempo real) en 8 bits y 89 en 10 bits, a
+  1920x1080. Benchmark: 10 bits 1080p 558 fps (200 fps con RGBA).
+
+**Pendiente de decidir**
+- FFmpeg está enlazado estático (LGPL-2.1): mantenerlo así (cumplimiento por §6, todo el código es público) o pasar a DLLs.
+
 **Siguiente paso**
-- Diagnosticar `renpysound` con más registro (errores de `RPS`, lectura vía RWops, BytesIO frente a archivo); requiere iteraciones
-  de CI más allá del límite de ~15, pendientes de la aprobación del usuario.
+- Confirmación visual/auditiva del usuario y cierre del Hito 3 (tag `hito-3`). Después, Hito 4 (Ren'Py arranca, ANGLE
+  empaquetado), no antes de su confirmación.
