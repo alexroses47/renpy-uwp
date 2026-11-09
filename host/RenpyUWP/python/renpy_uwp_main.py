@@ -56,6 +56,15 @@ def find_games():
     return games
 
 
+_logdir = None
+
+
+def path_to_logdir(_basedir):
+    """Replaces renpy.py's path_to_logdir (which returns the game's basedir, on the USB drive).
+    A module-level function: Ren'Py pickles the globals of modules named renpy* (renpy/__init__.py backup)."""
+    return _logdir
+
+
 def log(msg):
     print(time.strftime("%H:%M:%S"), msg, flush=True)
 
@@ -110,11 +119,14 @@ def run(localstate, install):
         sys.path.append(site_zip)
 
     # Ren'Py's own launcher module: bootstrap() calls renpy.__main__.path_to_gamedir & co.
-    spec = importlib.util.spec_from_file_location("renpy_launcher_main", os.path.join(renpy_base, "renpy.py"))
+    # Its module name must not start with "renpy": Ren'Py backs up (pickles) the globals of those modules.
+    global _logdir
+    _logdir = logdir
+    spec = importlib.util.spec_from_file_location("uwp_renpy_launcher", os.path.join(renpy_base, "renpy.py"))
     launcher = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(launcher)
-    launcher.path_to_logdir = lambda _basedir: logdir
-    sys.modules["renpy_launcher_main"] = launcher
+    launcher.path_to_logdir = path_to_logdir
+    sys.modules["uwp_renpy_launcher"] = launcher
 
     sys.argv = [os.path.join(renpy_base, "renpy.py"), basedir]
     log(f"starting {name}: basedir={basedir} renpy_base={renpy_base} saves={saves} logs={logdir} "
