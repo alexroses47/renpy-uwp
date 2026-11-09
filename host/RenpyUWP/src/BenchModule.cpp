@@ -4,6 +4,8 @@
 
 // Built-in module "_renpy_uwp": host diagnostics for Python.
 //   decode_benchmark(path, convert=True) -> dict
+//   capture_logs(path)  -> routes FFmpeg av_log and SDL_Log output to a file (UWP has no console)
+//   sdl_error()         -> SDL_GetError()
 // Decodes every video frame of `path` as fast as possible with FFmpeg, using the same decoder
 // options as Ren'Py's ffmedia.c (threads=auto), optionally converting each frame to RGBA with
 // swscale like Ren'Py does. Playback through renpysound is paced to the video's frame rate, so it
@@ -13,12 +15,19 @@
 
 #include <windows.h>
 
+#include <SDL.h>
+
+#include <cstdarg>
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <share.h>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/log.h>
 #include <libavutil/pixdesc.h>
 #include <libswscale/swscale.h>
 }
@@ -142,6 +151,55 @@ PyObject* DecodeBenchmark(PyObject*, PyObject* args, PyObject* kwargs) {
                          convert ? Py_True : Py_False);
 }
 
+// ---- log capture ---------------------------------------------------------------------------
+FILE* g_logFile = nullptr;
+SRWLOCK g_logLock = SRWLOCK_INIT;
+
+void WriteLogLine(const char* tag, const char* text) {
+    AcquireSRWLockExclusive(&g_logLock);
+    if (g_logFile) {
+        fprintf(g_logFile, "[%s] %s", tag, text);
+        size_t n = strlen(text);
+        if (n == 0 || text[n - 1] != '\n') fputc('\n', g_logFile);
+        fflush(g_logFile);
+    }
+    ReleaseSRWLockExclusive(&g_logLock);
+}
+
+void AvLogCallback(void* avcl, int level, const char* fmt, va_list vl) {
+    if (level > av_log_get_level()) return;
+    char line[1024];
+    int printPrefix = 1;
+    av_log_format_line(avcl, level, fmt, vl, line, sizeof(line), &printPrefix);
+    WriteLogLine("ffmpeg", line);
+}
+
+void SDLCALL SdlLogCallback(void*, int category, SDL_LogPriority priority, const char* message) {
+    char line[1024];
+    snprintf(line, sizeof(line), "cat=%d prio=%d %s", category, static_cast<int>(priority), message);
+    WriteLogLine("sdl", line);
+}
+
+PyObject* CaptureLogs(PyObject*, PyObject* args) {
+    PyObject* pathObj = nullptr;
+    if (!PyArg_ParseTuple(args, "U", &pathObj)) return nullptr;
+    wchar_t* wpath = PyUnicode_AsWideCharString(pathObj, nullptr);
+    if (!wpath) return nullptr;
+    AcquireSRWLockExclusive(&g_logLock);
+    if (g_logFile) fclose(g_logFile);
+    g_logFile = _wfsopen(wpath, L"w", _SH_DENYWR);
+    ReleaseSRWLockExclusive(&g_logLock);
+    PyMem_Free(wpath);
+    if (!g_logFile) return PyErr_SetFromErrno(PyExc_OSError);
+    av_log_set_callback(AvLogCallback);
+    SDL_LogSetOutputFunction(SdlLogCallback, nullptr);
+    SDL_LogSetAllPriority(SDL_LOG_PRIORITY_INFO);
+    WriteLogLine("host", "log capture started");
+    Py_RETURN_NONE;
+}
+
+PyObject* SdlError(PyObject*, PyObject*) { return PyUnicode_FromString(SDL_GetError()); }
+
 PyObject* StackInfo(PyObject*, PyObject*) {
     ULONG_PTR low = 0, high = 0;
     GetCurrentThreadStackLimits(&low, &high);
@@ -152,6 +210,8 @@ PyMethodDef kMethods[] = {
     {"decode_benchmark", reinterpret_cast<PyCFunction>(reinterpret_cast<void (*)()>(DecodeBenchmark)),
      METH_VARARGS | METH_KEYWORDS, "Decode all video frames of a file as fast as possible; returns timing."},
     {"thread_stack_size", StackInfo, METH_NOARGS, "Reserved stack size of the calling thread, in bytes."},
+    {"capture_logs", CaptureLogs, METH_VARARGS, "Route FFmpeg and SDL log output to the given file."},
+    {"sdl_error", SdlError, METH_NOARGS, "SDL_GetError()."},
     {nullptr, nullptr, 0, nullptr},
 };
 

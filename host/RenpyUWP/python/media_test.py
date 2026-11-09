@@ -6,7 +6,8 @@
 
 With Ren'Py 8.5.3's pygame_sdl2 (renpy.pygame) and audio/video module (renpy.audio.renpysound):
   1. opens a window, draws python/test/test.png (SDL2_image + libpng) for a few seconds;
-  2. plays python/test/test.ogg (Ogg Vorbis, FFmpeg + SDL audio) and logs the position;
+  2. plays python/test/test.ogg (Ogg Vorbis, FFmpeg + SDL audio) and logs the position, handing the
+     file over as a path, an open() file and a BytesIO (diagnostics: FFmpeg/SDL logs go to ffmpeg.log);
   3. decodes a few seconds of VP9 (8-bit and 10-bit) + Opus in Matroska, the formats KS:RE uses,
      shows the frames and logs how many were decoded;
   4. measures VP9 1080p decode speed (all frames as fast as possible, FFmpeg threads=auto as in
@@ -31,6 +32,7 @@ def main():
     try:
         import _renpy_uwp
         print(f"main thread stack reserve: {_renpy_uwp.thread_stack_size() // 1024} KB (8192 KB expected)")
+        _renpy_uwp.capture_logs(os.path.join(localstate, "ffmpeg.log"))  # FFmpeg av_log + SDL_Log
         import renpy
         print("renpy package:", renpy.version, "| windows:", renpy.windows)
         import renpy.pygame as pygame
@@ -92,29 +94,68 @@ def show_png(pygame, screen):
         return 1
 
 
+def rps_error(rs):
+    """renpysound's pending error (check_error raises it) plus SDL_GetError()."""
+    import _renpy_uwp
+    msg = None
+    try:
+        rs.check_error()
+    except Exception as e:
+        msg = repr(e)
+    return f"rps_error={msg} sdl_error={_renpy_uwp.sdl_error()!r}"
+
+
+def file_variants(name):
+    """The same file handed to renpysound in the three ways Ren'Py and our test can do it."""
+    path = os.path.join(TEST_DIR, name)
+    yield "path-str", lambda: path
+    yield "open()", lambda: open(path, "rb")
+    yield "BytesIO", lambda: __import__("io").BytesIO(open(path, "rb").read())
+
+
+def probe_rwops(name):
+    """Reads the first bytes through pygame_sdl2's RWops (SDL_RWFromFile), like renpysound does."""
+    from renpy.pygame.rwobject import RWopsIO
+    path = os.path.join(TEST_DIR, name)
+    try:
+        r = RWopsIO(path)
+        head = r.read(16)
+        size = r.seek(0, 2)
+        r.close()
+        print(f"RWOPS {name}: read {len(head)} bytes {head[:8]!r}, size {size} (os: {os.path.getsize(path)})")
+    except BaseException:
+        traceback.print_exc()
+
+
 def play_ogg(pygame, screen):
     import renpy.audio.renpysound as rs
+    ok_any = False
     try:
         rs.init(48000, True, 2048, True, False, False)
         rs.set_channel_count(4)
-        print("audio: init OK, sample rate", rs.get_sample_rate())
-        f = open(os.path.join(TEST_DIR, "test.ogg"), "rb")
-        rs.play(0, f, "test.ogg")
-        positions = []
+        print("audio: init OK, sample rate", rs.get_sample_rate(), "|", rps_error(rs))
+        probe_rwops("test.ogg")
+        for label, make in file_variants("test.ogg"):
+            try:
+                rs.play(0, make(), "test.ogg")
+                print(f"OGG [{label}]: play() returned | {rps_error(rs)}")
+                positions = []
 
-        def tick():
-            rs.periodic()
-            if not positions or time.time() - positions[-1][0] >= 1.0:
-                positions.append((time.time(), rs.get_pos(0), rs.busy(0)))
+                def tick():
+                    rs.periodic()
+                    if not positions or time.time() - positions[-1][0] >= 0.5:
+                        positions.append((time.time(), rs.get_pos(0), rs.busy(0)))
 
-        pump_for(pygame, 4.5, tick)
-        for _, pos, busy in positions:
-            print(f"audio: pos {pos:.2f} s busy={busy}")
-        print("audio: duration", rs.get_duration(0))
-        rs.stop(0)
-        advanced = any(pos > 0.5 for _, pos, _ in positions)
-        print("OGG:", "OK, playback advanced" if advanced else "FAIL, position did not advance")
-        return 0 if advanced else 1
+                pump_for(pygame, 2.5, tick)
+                print(f"OGG [{label}]: pos/busy " + ", ".join(f"{p:.2f}/{int(b)}" for _, p, b in positions)
+                      + f" | duration {rs.get_duration(0)} | {rps_error(rs)}")
+                rs.stop(0)
+                advanced = any(p > 0.5 for _, p, _ in positions)
+                ok_any = ok_any or advanced
+                print(f"OGG [{label}]:", "OK, playback advanced" if advanced else "FAIL, position did not advance")
+            except BaseException:
+                traceback.print_exc()
+        return 0 if ok_any else 1
     except BaseException:
         traceback.print_exc()
         return 1
@@ -142,38 +183,48 @@ def benchmark():
 
 def decode_video(pygame, screen, name):
     import renpy.audio.renpysound as rs
+    best = 0
     try:
         rgb = pygame.Surface((16, 16), 0, 32)
         rgba = pygame.Surface((16, 16), pygame.SRCALPHA, 32)
         rs.sample_surfaces(rgb, rgba)
-        rs.set_video(1, rs.NODROP_VIDEO)
-        rs.play(1, open(os.path.join(TEST_DIR, name), "rb"), name)
-        frames = 0
-        first = None
-        size = None
-        t0 = time.time()
+        probe_rwops(name)
+        for label, make in file_variants(name):
+            try:
+                rs.set_video(1, rs.NODROP_VIDEO)
+                rs.play(1, make(), name)
+                print(f"VIDEO {name} [{label}]: play() returned | {rps_error(rs)}")
+                frames = 0
+                first = None
+                size = None
+                t0 = time.time()
 
-        def tick():
-            nonlocal frames, first, size
-            rs.periodic()
-            if rs.video_ready(1):
-                surf = rs.read_video(1)
-                if surf is not None:
-                    frames += 1
-                    if first is None:
-                        first = time.time() - t0
-                        size = surf.get_size()
-                    if frames % 2 == 0:
-                        screen.blit(pygame.transform.scale(surf, screen.get_size()), (0, 0))
-                        pygame.display.flip()
+                def tick():
+                    nonlocal frames, first, size
+                    rs.periodic()
+                    if rs.video_ready(1):
+                        surf = rs.read_video(1)
+                        if surf is not None:
+                            frames += 1
+                            if first is None:
+                                first = time.time() - t0
+                                size = surf.get_size()
+                            if frames % 2 == 0:
+                                screen.blit(pygame.transform.scale(surf, screen.get_size()), (0, 0))
+                                pygame.display.flip()
 
-        pump_for(pygame, 5.0, tick)
-        elapsed = time.time() - t0
-        rs.stop(1)
-        rs.set_video(1, rs.NO_VIDEO)
-        print(f"VIDEO {name}: {frames} frames decoded in {elapsed:.1f} s ({frames / elapsed:.1f} fps), "
-              f"frame size {size}, first frame after {first if first is None else round(first, 2)} s")
-        return 0 if frames >= 60 else 1
+                pump_for(pygame, 3.0, tick)
+                elapsed = time.time() - t0
+                busy = rs.busy(1)
+                rs.stop(1)
+                rs.set_video(1, rs.NO_VIDEO)
+                print(f"VIDEO {name} [{label}]: {frames} frames decoded in {elapsed:.1f} s "
+                      f"({frames / elapsed:.1f} fps), frame size {size}, first frame after "
+                      f"{first if first is None else round(first, 2)} s, busy at end={busy} | {rps_error(rs)}")
+                best = max(best, frames)
+            except BaseException:
+                traceback.print_exc()
+        return 0 if best >= 60 else 1
     except BaseException:
         traceback.print_exc()
         return 1
