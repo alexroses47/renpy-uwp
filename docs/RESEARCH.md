@@ -776,3 +776,15 @@ Ningún códec externo (libvpx/libopus/libvorbis no hacen falta: FFmpeg trae dec
 - `renpy/savetoken.py` importa `ecdsa` al arrancar: se empaqueta `site-packages.zip` con los paquetes puros de renpy-build.
 - Al no poder escribir `.rpyc` en `renpy-base` (paquete de solo lectura), Ren'Py registra `PermissionError` y compila
   `renpy/common` en memoria en cada arranque (tolerado, `script.py:902-917`). Precompilarlo queda como mejora.
+- **ANGLE en UWP con MSVC:** según `doc/DevSetup.md` del fork, `target_os="winuwp"` requiere `is_clang=false` y
+  `is_component_build=false`. Con MSVC hay que poner además `use_custom_libcxx=false`, porque la libc++ de Chromium exige
+  clang. Las primeras builds de CI ignoraban todos los args: `$args` es una variable automática de PowerShell. Ahora los
+  args van en `args.gn`, se verifican con `gn args --list` y `dumpbin /dependents` comprueba que las DLLs solo importen el
+  CRT `_APP`, API sets, `d3d11` y `dxgi`. El backend D3D11 necesita `d3dcompiler_47.dll`: se empaqueta la del Windows SDK.
+- **Swapchain de ANGLE en Xbox:** `CoreWindowNativeWindow::createSwapChain` del fork (`:245-248`) usa en Xbox el tamaño
+  del **modo HDMI actual** (`HdmiDisplayInformation`) e ignora el tamaño de ventana y `EGLRenderSurfaceSizeProperty`. Con
+  salida 4K sale un swapchain de 3840x2160, que reinicia la GPU (§15). ANGLE ve el dispositivo perdido y `eglCreateContext`
+  devuelve `EGL_BAD_ALLOC` (`DisplayD3D.cpp:279-291`). En el Hito 4 el host deja el modo del sistema (`hdmi = system` en
+  `renpy-uwp.ini`) y baja a 1080p60 si el modo supera 1440p. **Hito 5:** parchear ANGLE para que respete
+  `EGLRenderSurfaceSizeProperty` en Xbox, parchear SDL WinRT para pasar un `PropertySet` con 2560x1440 y añadir
+  `GL_GetDrawableSize` (SDL 2.0.20 devuelve el tamaño de la ventana, no el de la superficie EGL).

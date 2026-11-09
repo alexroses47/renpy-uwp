@@ -10,6 +10,8 @@
 
 #include <atomic>
 #include <cstdint>
+#include <cstdio>
+#include <share.h>
 #include <string>
 
 #include <winrt/Windows.ApplicationModel.Core.h>
@@ -141,7 +143,19 @@ public:
         InstallLifecycleHandlers();
         Measure(3.0, "baseline (initial output mode)");
 
-        if (haveHdmi && !ApplyPolicy()) return 1;
+        // renpy-uwp.ini "hdmi": "system" (default) keeps the console's output mode; "4k" applies the
+        // 4K120 + 1440p policy. The SternXD ANGLE fork sizes its swapchain to the current HDMI mode on
+        // Xbox (CoreWindowNativeWindow.cpp), so a 4K output gives a 3840x2160 swapchain, which resets the
+        // GPU (docs/RESEARCH.md section 15): keep "system" until ANGLE honours a requested size (milestone 5).
+        std::string hdmi = ReadIniValue("hdmi", "system");
+        RLOG("output: renpy-uwp.ini hdmi=%s", hdmi.c_str());
+        if (haveHdmi && hdmi == "4k" && !ApplyPolicy()) return 1;
+        if (haveHdmi && hdmi != "4k" && renpyuwp::display::Current().height > 1440) {
+            renpyuwp::display::Mode active{};
+            bool ok = renpyuwp::display::RequestCandidate(kFallbackCandidate, [this] { PumpEvents(); }, active);
+            RLOG("output: system mode is above 1440p (ANGLE would create a GPU-resetting swapchain); 1080p60 %s",
+                 ok ? "applied" : "request FAILED");
+        }
 
         // Python owns the window while it runs (pygame display; later Ren'Py): SDL on WinRT supports a
         // single window and video calls only on this thread. The HDMI mode set above stays active.
@@ -416,6 +430,34 @@ private:
             return TryBestMode() && ApplyPolicy();
         }
         return true;
+    }
+
+    // Reads "key = value" from LocalState\renpy-uwp.ini (written by ci/set-game.sh); '#' starts a comment.
+    static std::string ReadIniValue(const char* key, const char* fallback) {
+        std::wstring path;
+        try {
+            path = std::wstring(winrt::Windows::Storage::ApplicationData::Current().LocalFolder().Path().c_str()) +
+                   L"\\renpy-uwp.ini";
+        } catch (...) {
+            return fallback;
+        }
+        FILE* f = _wfsopen(path.c_str(), L"r", _SH_DENYNO);
+        if (!f) return fallback;
+        std::string result = fallback;
+        char line[512];
+        while (fgets(line, sizeof(line), f)) {
+            std::string l(line);
+            l = l.substr(0, l.find('#'));
+            size_t eq = l.find('=');
+            if (eq == std::string::npos) continue;
+            auto trim = [](std::string v) {
+                size_t a = v.find_first_not_of(" \t\r\n"), b = v.find_last_not_of(" \t\r\n");
+                return a == std::string::npos ? std::string() : v.substr(a, b - a + 1);
+            };
+            if (trim(l.substr(0, eq)) == key) result = trim(l.substr(eq + 1));
+        }
+        fclose(f);
+        return result;
     }
 
     bool RunPython(IUnknown* coreWindow) {

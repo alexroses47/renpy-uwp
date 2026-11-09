@@ -5,7 +5,8 @@
 # Chooses which game the runtime starts: writes LocalState\renpy-uwp.ini on the Xbox.
 #
 # Usage:
-#   ci/set-game.sh <game>     # e.g. the_question, ksre (folder name under <drive>:\renpy\games\)
+#   ci/set-game.sh <game> [hdmi]  # game: folder under <drive>:\renpy\games\ (the_question, ksre)
+#                                 # hdmi: system (default) or 4k (4K120 output + 1440p policy)
 #   ci/set-game.sh --show     # print the current renpy-uwp.ini
 #   ci/set-game.sh --clear    # empty ini: the runtime picks the first game alphabetically
 #
@@ -16,7 +17,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/ci/lib/devportal.sh"
 
-[[ $# -eq 1 ]] || { sed -n '5,11p' "$0"; exit 2; }
+[[ $# -ge 1 && $# -le 2 ]] || { sed -n '5,12p' "$0"; exit 2; }
 
 dp_require_creds
 dp_load_pins
@@ -38,7 +39,9 @@ if [[ "$1" == "--clear" ]]; then
     printf '# renpy-uwp runtime settings\n' >"$ini"
 else
     [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]] || dp_die "invalid game folder name: $1"
-    printf '# renpy-uwp runtime settings\ngame = %s\n' "$1" >"$ini"
+    hdmi="${2:-system}"
+    [[ "$hdmi" == system || "$hdmi" == 4k ]] || dp_die "hdmi must be 'system' or '4k'"
+    printf '# renpy-uwp runtime settings\ngame = %s\nhdmi = %s\n' "$1" "$hdmi" >"$ini"
 fi
 
 dp_csrf
