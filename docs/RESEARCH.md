@@ -675,3 +675,17 @@ Ningún códec externo (libvpx/libopus/libvorbis no hacen falta: FFmpeg trae dec
   `renpy/display/presplash.py`, `renpy/exports/platformexports.py`, `renpy/common/00steam.rpy` (Steam). En UWP
   `platform.win32_ver()` no está vacío → `renpy.windows = True` y Ren'Py entra en esas rutas.
 - Desactivar `pypresence`/Discord en Xbox (KS:RE lo trae en `game/python-packages/`).
+
+## 30. Decisión: enlazado estático de FFmpeg (LGPL-2.1) — 2026-11-09
+
+- **Situación:** el Hito 3 enlaza FFmpeg 4.3.1 (LGPL-2.1-or-later, sin `--enable-gpl`/`--enable-nonfree`/`--enable-version3`)
+  como bibliotecas estáticas dentro de `RenpyUWP.exe`. El plan inicial era dinámico (DLLs).
+- **Decisión (usuario):** mantener el enlazado estático (opción a).
+- **Cumplimiento, LGPL-2.1 §6(a):** con cada binario distribuido se pone a disposición el código fuente completo de FFmpeg
+  (tarball con SHA-256, parches y línea de configure del repo) y el código fuente completo de la aplicación con su receta
+  de CI. Así cualquiera puede recompilar y volver a enlazar con un FFmpeg modificado (`/p:MediaDir=`). El artefacto lleva
+  el texto de la LGPL y THIRD_PARTY_NOTICES. La MPL-2.0 del proyecto no prohíbe modificar la aplicación ni la ingeniería
+  inversa para depurar esas modificaciones.
+- **Alternativa descartada:** FFmpeg como DLLs (`--enable-shared`) junto a `SDL2.dll`. Era más clara para la LGPL, pero
+  costaba más iteraciones de CI y no aporta nada técnico.
+- **FriBidi** (LGPL-2.1), cuando se enlace en el Hito 4 (`renpy.text.bidi`), seguirá el mismo esquema.

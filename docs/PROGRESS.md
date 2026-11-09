@@ -149,8 +149,8 @@
   por las tres vías. VP9+Opus en MKV vía `renpysound`: 90 frames en 3 s (29,7 fps = tiempo real) en 8 bits y 89 en 10 bits, a
   1920x1080. Benchmark: 10 bits 1080p 558 fps (200 fps con RGBA).
 
-**Pendiente de decidir**
-- FFmpeg está enlazado estático (LGPL-2.1): mantenerlo así (cumplimiento por §6, todo el código es público) o pasar a DLLs.
+- Decisión del usuario: FFmpeg queda enlazado estático, con cumplimiento de la LGPL-2.1 §6(a) documentado en
+  THIRD_PARTY_NOTICES y RESEARCH §30 (FriBidi seguirá el mismo esquema).
 
 **Siguiente paso**
 - Confirmación visual/auditiva del usuario y cierre del Hito 3 (tag `hito-3`). Después, Hito 4 (Ren'Py arranca, ANGLE
