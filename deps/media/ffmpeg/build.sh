@@ -22,10 +22,13 @@ for p in "$here"/patches/*.diff; do
 done
 
 which cl link nasm
+# --enable-cross-compile: configure must not run its test programs, which are linked as UWP
+# (-APPCONTAINER WindowsApp.lib) and cannot start on the build machine (same as FFmpegInterop).
 # NOTE: deliberately no --enable-gpl / --enable-nonfree / --enable-version3 (LGPL-2.1-or-later).
 ./configure \
     --prefix="$prefix" \
     --toolchain=msvc --target-os=win32 --arch=x86_64 \
+    --enable-cross-compile \
     --enable-static --disable-shared \
     --disable-programs --disable-doc --disable-debug \
     --disable-network --disable-avdevice --disable-avfilter --disable-postproc \
