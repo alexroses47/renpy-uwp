@@ -4,7 +4,8 @@
 
 """Build pythonXY.zip: the stdlib as precompiled .pyc files (no sources), for zipimport.
 
-Usage: python3.12 -I make_stdlib_zip.py <Lib dir> <output zip>
+Usage: python3.12 -I make_stdlib_zip.py <Lib dir> <output zip> [--only TOPDIR]
+  --only TOPDIR: include only files under <Lib dir>/TOPDIR (e.g. the renpy package of a Ren'Py tree)
 Must run with the same minor version as the target interpreter (3.12): .pyc magic numbers differ.
 """
 import importlib.util
@@ -24,6 +25,7 @@ EXCLUDE_FILES = {"turtle.py", "antigravity.py"}
 
 def main() -> int:
     lib, out = Path(sys.argv[1]), Path(sys.argv[2])
+    only = sys.argv[4] if len(sys.argv) > 4 and sys.argv[3] == "--only" else None
     if sys.version_info[:2] != (3, 12):
         print("error: must run with Python 3.12", file=sys.stderr)
         return 2
@@ -32,7 +34,11 @@ def main() -> int:
         tmpdir = Path(tmp)
         for path in sorted(lib.rglob("*.py")):
             rel = path.relative_to(lib)
-            if any(part in EXCLUDE_DIRS for part in rel.parts[:-1]) or rel.name in EXCLUDE_FILES:
+            if only:
+                # Non-stdlib tree (e.g. Ren'Py): keep everything under TOPDIR (renpy.test is a real package).
+                if rel.parts[0] != only or "__pycache__" in rel.parts:
+                    continue
+            elif any(part in EXCLUDE_DIRS for part in rel.parts[:-1]) or rel.name in EXCLUDE_FILES:
                 continue
             cfile = tmpdir / "x.pyc"
             py_compile.compile(str(path), cfile=str(cfile), dfile=str(rel).replace("\\", "/"),
