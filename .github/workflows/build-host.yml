@@ -24,7 +24,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: build-host-${{ github.ref }}
+  group: build-host-v2-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
