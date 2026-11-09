@@ -205,6 +205,9 @@ def decode_video(pygame, screen, name):
 
                 def tick():
                     nonlocal frames, first, size
+                    # Ren'Py's display loop calls this every frame (renpy/display/core.py): it sets the
+                    # video clock (ffmedia.c media_advance_time); without it frames stay at time 0.
+                    rs.advance_time()
                     rs.periodic()
                     if rs.video_ready(1):
                         surf = rs.read_video(1)
