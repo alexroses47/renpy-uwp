@@ -320,7 +320,27 @@ jobs:
           Copy-Item out/deps/angle/licenses/* dist/licenses/
           $listing = & tar -tf $env:PKG_PATH
           if (-not ($listing -contains 'SDL2.dll')) { throw "SDL2.dll is not at the package root:`n$($listing -join "`n")" }
-          foreach ($f in @('libEGL.dll', 'libGLESv2.dll', 'd3dcompiler_47.dll', 'python/renpy_uwp_main.py', 'menu/game/script.rpy', 'menu/game/screens.rpy', 'menu/game/images/logo.png', 'python/site-packages.zip', 'renpy-base/renpy.py', 'renpy-base/renpy/common/00start.rpy', 'python/python312.zip', 'python/smoke.py', 'python/media_test.py', 'python/renpy.zip', 'python/test/test.png', 'python/test/test.ogg', 'python/test/test-vp9.mkv', 'python/test/test-vp9-10bit.mkv')) {
+          $required = @(
+            'libEGL.dll',
+            'libGLESv2.dll',
+            'd3dcompiler_47.dll',
+            'python/renpy_uwp_main.py',
+            'menu/game/script.rpy',
+            'menu/game/screens.rpy',
+            'menu/game/images/logo.png',
+            'python/site-packages.zip',
+            'renpy-base/renpy.py',
+            'renpy-base/renpy/common/00start.rpy',
+            'python/python312.zip',
+            'python/smoke.py',
+            'python/media_test.py',
+            'python/renpy.zip',
+            'python/test/test.png',
+            'python/test/test.ogg',
+            'python/test/test-vp9.mkv',
+            'python/test/test-vp9-10bit.mkv'
+          )
+          foreach ($f in $required) {
             if (-not ($listing -contains $f)) { throw "$f is not in the package:`n$($listing -join "`n")" }
           }
           $vclibs = Get-ChildItem -Recurse out/AppPackages -Filter 'Microsoft.VCLibs.x64.*.appx' |
