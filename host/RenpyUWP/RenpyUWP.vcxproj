@@ -54,7 +54,8 @@
     <!-- Media dependencies (deps/media/build.ps1) and Ren'Py static modules (renpy/uwp/build.ps1). -->
     <MediaDir Condition="'$(MediaDir)'==''">$(MSBuildThisFileDirectory)..\..\out\deps\media</MediaDir>
     <!-- Exact libwebp library names depend on its CMake (checked in the media build log). -->
-    <WebpLibs Condition="'$(WebpLibs)'==''">webp.lib;webpdemux.lib;sharpyuv.lib</WebpLibs>
+    <!-- libwebp's CMake adds a "lib" prefix under MSVC (CMakeLists.txt, webp_libname_prefix). -->
+    <WebpLibs Condition="'$(WebpLibs)'==''">libwebp.lib;libwebpdemux.lib;libsharpyuv.lib</WebpLibs>
     <RenpyDir Condition="'$(RenpyDir)'==''">$(MSBuildThisFileDirectory)..\..\out\deps\renpy</RenpyDir>
   </PropertyGroup>
 
