@@ -54,8 +54,10 @@ try {
     # CI builds did that and silently produced a default (debug, component, Dawn/Vulkan) ANGLE.
     $gnArgs = @(
         # winuwp: MSVC toolchain, as the fork's doc/DevSetup.md recommends (is_clang = false); its
-        # store toolchain runs cl.exe, which rejects clang-only flags otherwise.
-        'target_os = "winuwp"', 'target_cpu = "x64"', 'is_clang = false', 'treat_warnings_as_errors = false',
+        # store toolchain runs cl.exe, which rejects clang-only flags otherwise. Chromium's bundled
+        # libc++ only builds with clang, so MSVC uses its own STL (use_custom_libcxx = false).
+        'target_os = "winuwp"', 'target_cpu = "x64"', 'is_clang = false', 'use_custom_libcxx = false',
+        'treat_warnings_as_errors = false',
         'is_debug = false', 'is_component_build = false',
         'symbol_level = 0', 'dcheck_always_on = false',
         'angle_enable_d3d11 = true', 'angle_enable_d3d9 = false', 'angle_enable_gl = false',
@@ -69,7 +71,7 @@ try {
     # Fail early if gn did not take the arguments.
     $effective = cmd /c "gn args out\uwp --list --short --overrides-only"
     Write-Host "gn effective overrides:`n$($effective -join "`n")"
-    foreach ($must in 'is_debug = false', 'is_component_build = false', 'is_clang = false', 'target_os = "winuwp"', 'angle_enable_wgpu = false') {
+    foreach ($must in 'is_debug = false', 'is_component_build = false', 'is_clang = false', 'use_custom_libcxx = false', 'target_os = "winuwp"', 'angle_enable_wgpu = false') {
         if (-not ($effective -contains $must)) { throw "gn did not apply: $must" }
     }
     Invoke-Checked 'ninja' { cmd /c "autoninja -C out\uwp libEGL libGLESv2" }
