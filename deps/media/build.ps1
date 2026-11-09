@@ -36,15 +36,23 @@ function Get-Source([string]$key) {
         Write-Host "Downloading $($d.url)"
         # curl with retries and a hard time limit: an Invoke-WebRequest download from GitHub hung for
         # 58 minutes in CI and the whole job timed out.
+        $t0 = Get-Date
         Invoke-Checked "download $($d.file)" {
             curl.exe -fsSL --retry 4 --retry-delay 5 --retry-all-errors --connect-timeout 30 --max-time 900 -A 'renpy-uwp-ci' -o $tar $d.url
         }
+        Write-Host "Downloaded $($d.file) in $([int]((Get-Date) - $t0).TotalSeconds) s"
     }
     $h = (Get-FileHash -Algorithm SHA256 $tar).Hash.ToLowerInvariant()
     if ($h -ne $d.sha) { throw "SHA-256 mismatch for $($d.file): $h" }
     $dir = Join-Path $srcRoot ($d.file -replace '\.tar\.(gz|xz|bz2)$', '')
     if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
-    Invoke-Checked "extract $($d.file)" { tar -xf $tar -C $srcRoot | Out-Host }
+    # Extract with Python's tarfile (gz/bz2/xz built in): the runner's tar hung for ~2 hours on
+    # harfbuzz-8.0.1.tar.xz in two CI runs with no output.
+    $t0 = Get-Date
+    Invoke-Checked "extract $($d.file)" {
+        python -I -c "import sys, tarfile; tarfile.open(sys.argv[1]).extractall(sys.argv[2], filter='data')" $tar $srcRoot
+    }
+    Write-Host "Extracted $($d.file) in $([int]((Get-Date) - $t0).TotalSeconds) s"
     return $dir
 }
 

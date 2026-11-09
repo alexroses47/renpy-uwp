@@ -96,6 +96,7 @@ jobs:
 
       - name: Build media dependencies (png, jpeg, webp, freetype, harfbuzz, fribidi, SDL2_image, FFmpeg LGPL)
         if: steps.cache-media.outputs.cache-hit != 'true'
+        timeout-minutes: 75
         shell: pwsh
         run: ./deps/media/build.ps1 -Prefix "$env:GITHUB_WORKSPACE/out/deps/media" -ZlibPrefix "$env:GITHUB_WORKSPACE/out/deps/cpython" -SdlPrefix "$env:GITHUB_WORKSPACE/out/deps/sdl2"
 
