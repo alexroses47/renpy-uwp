@@ -95,6 +95,13 @@ Copy-Item $zlib (Join-Path $Prefix 'lib\z.lib')
 # FFmpeg's msvc toolchain maps -lz to zlib.lib (configure, msvc_flags).
 Copy-Item $zlib (Join-Path $Prefix 'lib\zlib.lib')
 Copy-Item (Join-Path $zinc '*.h') (Join-Path $Prefix 'include')
+# zconf.h tests HAVE_UNISTD_H / HAVE_STDARG_H with #ifdef, but FFmpeg's config.h defines them to 0,
+# which pulls in <unistd.h> (absent in MSVC). Make the prefix copy honour the value.
+$zconf = Join-Path $Prefix 'include\zconf.h'
+$zc = (Get-Content -Raw $zconf) -replace '#ifdef HAVE_UNISTD_H', '#if defined(HAVE_UNISTD_H) && (HAVE_UNISTD_H + 0)' `
+                                 -replace '#ifdef HAVE_STDARG_H', '#if defined(HAVE_STDARG_H) && (HAVE_STDARG_H + 0)'
+if ($zc -notmatch [regex]::Escape('(HAVE_UNISTD_H + 0)')) { throw 'zconf.h patch did not apply' }
+Set-Content -NoNewline -Path $zconf -Value $zc
 $zlibArgs = @("-DZLIB_INCLUDE_DIR=$(Join-Path $Prefix 'include')", "-DZLIB_LIBRARY=$(Join-Path $Prefix 'lib\z.lib')")
 
 # --- libpng -----------------------------------------------------------------------------------
