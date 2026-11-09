@@ -25,6 +25,7 @@ CC BY-NC-ND 4.0, code under MPL-2.0), are provided by the user from their own co
 | CPython build file `python/cpython-uwp/CMakeLists.txt` | derived from `thexai/cpython@4c97e13` | PSF-2.0 | Adapted for a static library (see its header) |
 | SDL2 (`SDL2.dll`, WinRT backend) | 2.0.20 (release tarball, SHA-256 `c56aba1d…dd06`, unmodified) | zlib — full text shipped in the artifact as `licenses/SDL2-LICENSE.txt` | Window, events, gamepad (`deps/sdl2/build.ps1`) |
 | Ren'Py (`python/renpy.zip` + C/Cython modules in `renpy_static.lib`) | 8.5.3.26051504 (tag), plus `renpy/uwp/patches/0001-msvc-compat.diff` | MIT (bundled pygame_sdl2 code: zlib/LGPL headers as in Ren'Py's own notices) — `licenses/renpy-license.rst` | Engine; milestone 3 ships `_renpy`, `renpy.audio.*`, `renpy.pygame.*` |
+| Ren'Py `sdk-fonts` (Source Han Sans Lite, Vazirmatn) in `renpy-base/sdk-fonts` | from the Ren'Py 8.5.3 tag | SIL Open Font License 1.1 (declared in the font files) | Fonts used by SDK sample games (The Question's language buttons) |
 | SDL2_image | 2.6.2 (release tarball, unmodified) | zlib | Image loading for pygame_sdl2 (static) |
 | libpng | 1.6.43 | libpng license | static |
 | libjpeg-turbo | 1.5.3 | IJG + BSD-3-Clause | static |

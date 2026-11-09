@@ -90,6 +90,9 @@ New-Item -ItemType Directory -Force (Join-Path $base 'renpy') | Out-Null
 Copy-Item (Join-Path $src 'renpy.py') $base
 Copy-Item -Recurse (Join-Path $src 'renpy\common') (Join-Path $base 'renpy\common')
 Get-ChildItem -Recurse -File (Join-Path $base 'renpy\common') -Include '*.pyc', '*.rpyc', '*.rpymc' | Remove-Item
+# sdk-fonts: SDK games (The Question's preferences screen) add renpy_base/sdk-fonts to the search
+# path (the_question/game/options.rpy). SIL OFL 1.1 fonts (Source Han Sans Lite, Vazirmatn).
+Copy-Item -Recurse (Join-Path $src 'sdk-fonts') (Join-Path $base 'sdk-fonts')
 Write-Host "renpy-base: $((Get-ChildItem -Recurse -File $base).Count) files"
 
 New-Item -ItemType Directory -Force (Join-Path $Prefix 'licenses') | Out-Null
