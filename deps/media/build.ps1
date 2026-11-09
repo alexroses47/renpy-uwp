@@ -159,7 +159,8 @@ Invoke-Checked 'msys2 packages' { & $bash -lc 'pacman -S --noconfirm --needed ma
 # MSYS2's /usr/bin/link would shadow MSVC's link.exe.
 Invoke-Checked 'hide msys link' { & $bash -lc 'test ! -e /usr/bin/link.exe || mv -f /usr/bin/link.exe /usr/bin/link.exe.msys' }
 $sh = (Join-Path $here 'ffmpeg\build.sh')
-Invoke-Checked 'ffmpeg' { & $bash -lc "'$($sh -replace '\\','/')' '$($s -replace '\\','/')' '$($Prefix -replace '\\','/')' '$($zinc -replace '\\','/')' '$((Split-Path $zlib) -replace '\\','/')'" }
+# FFmpeg links zlib as -lz, i.e. z.lib: use the copy in the prefix (the CPython one is zlibstatic.lib).
+Invoke-Checked 'ffmpeg' { & $bash -lc "'$($sh -replace '\\','/')' '$($s -replace '\\','/')' '$($Prefix -replace '\\','/')' '$((Join-Path $Prefix 'include') -replace '\\','/')' '$((Join-Path $Prefix 'lib') -replace '\\','/')'" }
 Copy-License $s 'FFmpeg' @('COPYING.LGPLv2.1', 'LICENSE.md')
 
 @{ deps = $MediaDeps } | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 (Join-Path $Prefix 'media-deps-build.json')
